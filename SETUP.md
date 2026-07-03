@@ -61,6 +61,7 @@ create table public.accounts (
   subtype text,
   is_system integer not null default 0,
   archived integer not null default 0,
+  include_in_liquid integer not null default 1,
   created_at text
 );
 
@@ -176,6 +177,20 @@ create table public.expenses (
   created_at text
 );
 
+create table public.recurring_expenses (
+  id text primary key,
+  owner_id uuid not null default auth.uid(),
+  label text not null,
+  category_id text,
+  amount bigint not null default 0,
+  account_id text,
+  day_of_month integer not null default 1,
+  active integer not null default 1,
+  last_posted_month text,
+  note text,
+  created_at text
+);
+
 create table public.other_incomes (
   id text primary key,
   owner_id uuid not null default auth.uid(),
@@ -212,7 +227,7 @@ begin
   foreach t in array array[
     'parties','item_categories','items','accounts','journal_entries','journal_lines',
     'sales','sale_items','purchases','purchase_items','payments','payment_allocations',
-    'expenses','other_incomes','fixed_assets','app_settings'
+    'expenses','recurring_expenses','other_incomes','fixed_assets','app_settings'
   ] loop
     execute format('alter table public.%I enable row level security', t);
     execute format(
@@ -232,8 +247,13 @@ create publication powersync for table
   public.parties, public.item_categories, public.items, public.accounts,
   public.journal_entries, public.journal_lines, public.sales, public.sale_items,
   public.purchases, public.purchase_items, public.payments, public.payment_allocations,
-  public.expenses, public.other_incomes, public.fixed_assets, public.app_settings;
+  public.expenses, public.recurring_expenses, public.other_incomes, public.fixed_assets, public.app_settings;
 ```
+
+### Already set up? Upgrade to v0.2.0
+
+If you deployed an older schema, run **`supabase/migrations/20260704_v0_2_0.sql`** in the Supabase SQL Editor, then add the
+`recurring_expenses` line to your PowerSync `sync-rules.yaml` (see section 4 below) and redeploy sync rules.
 
 ## 3. Create a PowerSync Cloud instance (free)
 
@@ -267,6 +287,7 @@ bucket_definitions:
       - select * from payments where owner_id = bucket.user_id
       - select * from payment_allocations where owner_id = bucket.user_id
       - select * from expenses where owner_id = bucket.user_id
+      - select * from recurring_expenses where owner_id = bucket.user_id
       - select * from other_incomes where owner_id = bucket.user_id
       - select * from fixed_assets where owner_id = bucket.user_id
       - select * from app_settings where owner_id = bucket.user_id

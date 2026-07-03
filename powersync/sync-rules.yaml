@@ -1,0 +1,22 @@
+# Paste this entire file into PowerSync dashboard → sync-rules.yaml → Deploy
+bucket_definitions:
+  user_data:
+    parameters: select request.user_id() as user_id
+    data:
+      - select * from parties where owner_id = bucket.user_id
+      - select * from item_categories where owner_id = bucket.user_id
+      - select * from items where owner_id = bucket.user_id
+      - select * from accounts where owner_id = bucket.user_id
+      - select * from journal_entries where owner_id = bucket.user_id
+      - select * from journal_lines where owner_id = bucket.user_id
+      - select * from sales where owner_id = bucket.user_id
+      - select * from sale_items where owner_id = bucket.user_id
+      - select * from purchases where owner_id = bucket.user_id
+      - select * from purchase_items where owner_id = bucket.user_id
+      - select * from payments where owner_id = bucket.user_id
+      - select * from payment_allocations where owner_id = bucket.user_id
+      - select * from expenses where owner_id = bucket.user_id
+      - select * from recurring_expenses where owner_id = bucket.user_id
+      - select * from other_incomes where owner_id = bucket.user_id
+      - select * from fixed_assets where owner_id = bucket.user_id
+      - select * from app_settings where owner_id = bucket.user_id

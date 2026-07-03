@@ -32,6 +32,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Sale/purchase form route `id=new` no longer treated as an edit.
 
+### Cloud sync (v0.2.0)
+
+If you use Supabase + PowerSync, run `supabase/migrations/20260704_v0_2_0.sql` in the SQL Editor and update sync rules (see `SETUP.md`).
+
 ## [0.1.0] — 2026-07-03
 
 ### Added
