@@ -9,6 +9,7 @@ const publicDir = join(root, 'public');
 /** App / PWA icons sourced from brand/appstore (Android + iOS export). */
 const outputs = [
   { src: join(brandDir, 'ios', '32.png'), out: 'favicon.png' },
+  { src: join(brandDir, 'ios', '32.png'), out: 'favicon.ico' },
   { src: join(brandDir, 'ios', '180.png'), out: 'apple-touch-icon.png' },
   { src: join(brandDir, 'android', 'launchericon-192x192.png'), out: 'icon-192.png' },
   { src: join(brandDir, 'android', 'launchericon-512x512.png'), out: 'icon-512.png' },

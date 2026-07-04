@@ -1,0 +1,11 @@
+{
+  "buildCommand": "npm run generate-icons && npm run build",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "redirects": [
+    {
+      "source": "/favicon.ico",
+      "destination": "/favicon.png",
+      "permanent": true
+    }
+  ]
+}
