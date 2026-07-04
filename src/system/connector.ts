@@ -19,6 +19,23 @@ const FATAL_RESPONSE_CODES = [
   /^PGRST/i, // PostgREST schema/API errors (e.g. PGRST204 missing column)
 ];
 
+/** Seeded chart-of-accounts rows use global IDs (acc-cash, …) — local-only for sync. */
+function isSystemAccountOp(op: CrudEntry): boolean {
+  if (op.table !== 'accounts') return false;
+  const v = op.opData?.is_system;
+  return v === 1 || v === '1';
+}
+
+function accountPutPayload(op: CrudEntry, ownerId: string) {
+  const data = op.opData ?? {};
+  return {
+    ...data,
+    id: op.id,
+    owner_id: ownerId,
+    include_in_liquid: data.include_in_liquid ?? 1,
+  };
+}
+
 function isFatalUploadError(ex: unknown): boolean {
   const err = ex as { code?: string; message?: string };
   const code = err?.code ?? '';
@@ -114,11 +131,14 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
           let result;
           switch (op.op) {
             case UpdateType.PUT:
-              result = await table.upsert({
-                ...(op.opData ?? {}),
-                id: op.id,
-                owner_id: ownerId,
-              });
+              // System accounts are seeded locally per device/user; uploading them
+              // collides with another user's row (global PK) and fails RLS.
+              if (isSystemAccountOp(op)) continue;
+              result = await table.upsert(
+                op.table === 'accounts'
+                  ? accountPutPayload(op, ownerId)
+                  : { ...(op.opData ?? {}), id: op.id, owner_id: ownerId },
+              );
               break;
             case UpdateType.PATCH:
               result = await table.update(op.opData ?? {}).eq('id', op.id).eq('owner_id', ownerId);

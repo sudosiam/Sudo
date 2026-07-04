@@ -175,8 +175,8 @@ export async function createExpenseCategory(db: AbstractPowerSyncDatabase, name:
   );
   const code = String(6100 + row.n);
   await db.execute(
-    `INSERT INTO accounts (id, code, name, type, subtype, is_system, archived, created_at)
-     VALUES (?, ?, ?, 'expense', 'opex', 0, 0, ?)`,
+    `INSERT INTO accounts (id, code, name, type, subtype, is_system, archived, include_in_liquid, created_at)
+     VALUES (?, ?, ?, 'expense', 'opex', 0, 0, 1, ?)`,
     [id, code, name.trim(), new Date().toISOString()],
   );
   return id;

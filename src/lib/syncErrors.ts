@@ -55,5 +55,11 @@ export function formatSyncSchemaError(message: string): string {
   if (message.includes('sales_owner_invoice_no_uidx') || message.includes('purchases_owner_bill_no_uidx')) {
     return `${message}\n\nAnother device already used this document number. Reopen the document and save again to get a fresh number.`;
   }
+  if (
+    message.includes('row-level security policy') &&
+    (message.includes('accounts') || message.includes('"accounts"'))
+  ) {
+    return `${message}\n\nThe built-in chart of accounts (Cash, Inventory, etc.) is seeded locally and should not sync to a shared Supabase project used by multiple login accounts. Custom bank/expense accounts should sync after updating the app. If errors persist, sign out, sign back in, clear sync errors in Settings, then re-save the account.`;
+  }
   return message;
 }
