@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Menu, ChevronLeft, Moon, Sun, MonitorSmartphone, Wifi, WifiOff, RefreshCw } from 'lucide-react';
+import { Menu, ChevronLeft, Moon, Sun, MonitorSmartphone, Wifi, WifiOff, RefreshCw, AlertCircle } from 'lucide-react';
 import { usePowerSync, useStatus } from '@powersync/react';
 import { useAutoBackup } from '../../hooks/useAutoBackup';
 import { NAV_ITEMS } from './nav';
@@ -11,6 +11,9 @@ import { PageTransition } from './PageTransition';
 import { useTheme } from '../../stores/ui';
 import { cn } from '../../lib/utils';
 import { haptic } from '../../lib/haptics';
+import { cloudConfigured } from '../../system/supabase';
+import { formatSyncSchemaError } from '../../lib/syncErrors';
+import { useUploadQueue } from '../../hooks/useUploadQueue';
 
 function ThemeToggle() {
   const { theme, setTheme } = useTheme();
@@ -31,27 +34,55 @@ function ThemeToggle() {
 }
 
 function SyncIndicator() {
+  const db = usePowerSync();
   const status = useStatus();
+  const { stats } = useUploadQueue(db, {
+    enabled: cloudConfigured && status.connected,
+    pollMs: 2000,
+    previewLimit: 0,
+  });
+
   const online = status.connected;
-  const syncing = status.dataFlowStatus.downloading || status.dataFlowStatus.uploading;
+  const uploadError = status.dataFlowStatus.uploadError;
+  const downloadError = status.dataFlowStatus.downloadError;
+  const syncError = uploadError ?? downloadError;
+  const active = status.dataFlowStatus.downloading || status.dataFlowStatus.uploading;
+  const pending = stats.count;
+
+  if (!cloudConfigured) return null;
+
+  const syncing = active || (pending > 0 && !syncError);
+  const errorText = syncError ? formatSyncSchemaError(syncError.message) : null;
+
+  let label = 'Offline';
+  if (online) {
+    if (syncError) label = 'Sync error';
+    else if (syncing) label = pending > 0 ? `Syncing (${pending})` : 'Syncing';
+    else label = 'Synced';
+  }
+
   return (
     <div
       className={cn(
-        'flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-medium',
-        online
-          ? 'border-success/30 bg-success/10 text-success'
-          : 'border-border bg-card/65 text-muted-foreground',
+        'flex max-w-[11rem] items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-medium',
+        syncError
+          ? 'border-destructive/30 bg-destructive/10 text-destructive'
+          : online
+            ? 'border-success/30 bg-success/10 text-success'
+            : 'border-border bg-card/65 text-muted-foreground',
       )}
-      title={online ? 'Synced with cloud' : 'Offline — changes saved locally'}
+      title={errorText ?? (online ? 'Cloud sync status' : 'Offline — changes saved locally')}
     >
-      {syncing ? (
-        <RefreshCw className="size-3.5 animate-spin" />
+      {syncError ? (
+        <AlertCircle className="size-3.5 shrink-0" />
+      ) : syncing ? (
+        <RefreshCw className="size-3.5 shrink-0 animate-spin" />
       ) : online ? (
-        <Wifi className="size-3.5" />
+        <Wifi className="size-3.5 shrink-0" />
       ) : (
-        <WifiOff className="size-3.5" />
+        <WifiOff className="size-3.5 shrink-0" />
       )}
-      <span className="hidden sm:inline">{syncing ? 'Syncing' : online ? 'Synced' : 'Offline'}</span>
+      <span className="hidden truncate sm:inline">{label}</span>
     </div>
   );
 }

@@ -13,6 +13,10 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
   },
+  resolve: {
+    // Prevent duplicate React copies after Vite HMR reconnects (invalid hook call).
+    dedupe: ['react', 'react-dom', '@tanstack/react-query'],
+  },
   plugins: [
     basicSsl(),
     react(),
@@ -50,6 +54,7 @@ export default defineConfig({
     plugins: () => [wasm()],
   },
   optimizeDeps: {
+    include: ['react', 'react-dom', '@tanstack/react-query'],
     // These packages contain web workers and WASM files that must not be pre-bundled.
     exclude: ['@journeyapps/wa-sqlite', '@powersync/web'],
   },
@@ -57,5 +62,9 @@ export default defineConfig({
     // Required for mobile testing on LAN — PowerSync needs a secure context
     // (navigator.locks / WASM workers are blocked on http://192.168.x.x).
     host: true,
+    watch: {
+      // Brand assets are often locked by image viewers on Windows (EBUSY).
+      ignored: ['**/brand/**'],
+    },
   },
 });

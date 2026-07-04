@@ -49,6 +49,8 @@ create table public.items (
   selling_price bigint,
   qty double precision not null default 0,
   avg_cost bigint not null default 0,
+  opening_qty double precision not null default 0,
+  opening_unit_cost bigint not null default 0,
   created_at text
 );
 
@@ -250,10 +252,17 @@ create publication powersync for table
   public.expenses, public.recurring_expenses, public.other_incomes, public.fixed_assets, public.app_settings;
 ```
 
-### Already set up? Upgrade to v0.2.0
+### Already set up? Upgrade migrations
 
-If you deployed an older schema, run **`supabase/migrations/20260704_v0_2_0.sql`** in the Supabase SQL Editor, then add the
-`recurring_expenses` line to your PowerSync `sync-rules.yaml` (see section 4 below) and redeploy sync rules.
+Run these in the Supabase **SQL Editor** (in order if you skipped earlier ones), then reconnect
+your PowerSync instance so it picks up the new columns:
+
+| Version | File | Fixes |
+|---------|------|-------|
+| v0.2.0 | `supabase/migrations/20260704_v0_2_0.sql` | `include_in_liquid`, `recurring_expenses` |
+| v0.2.2 | `supabase/migrations/20260704_v0_2_2_inventory_opening.sql` | `opening_qty`, `opening_unit_cost` on items |
+
+After v0.2.0, add the `recurring_expenses` line to your PowerSync `sync-rules.yaml` (see section 4) and redeploy sync rules.
 
 ## 3. Create a PowerSync Cloud instance (free)
 
@@ -306,6 +315,24 @@ VITE_POWERSYNC_URL=https://YOURINSTANCE.powersync.journeyapps.com
 Restart the dev server (`npm run dev`). The app now shows a login screen —
 create your account, sign in, and everything you already entered locally will
 upload and start syncing in real time to every device you sign in on.
+
+## Troubleshooting: WebSocket / sync connection failed
+
+If you see `Failed to create websocket connection to wss://….powersync.journeyapps.com/sync/stream`:
+
+1. **PowerSync Dashboard → Client Auth**
+   - Enable **Supabase Auth**
+   - If Supabase uses **new JWT signing keys** (ES256 — check Supabase → Project Settings → JWT): leave **JWT Secret empty**
+   - If auto-detection fails, disable Supabase Auth checkbox and set manually:
+     - JWKS: `https://YOURPROJECT.supabase.co/auth/v1/.well-known/jwks.json`
+     - Audience: `authenticated`
+   - Click **Save & Deploy**
+
+2. **PowerSync Dashboard → Database Connections** — confirm the Supabase connection is healthy and sync rules are deployed.
+
+3. **In the app** — Settings → Cloud sync → tap the **reconnect** button, or sign out and sign back in (clears stale JWTs).
+
+4. **Same Supabase project** — `.env.local` must point at the same Supabase project PowerSync is connected to.
 
 ## Notes
 

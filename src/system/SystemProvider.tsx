@@ -4,8 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Session } from '@supabase/supabase-js';
 import { db } from './db';
 import { supabase, cloudConfigured } from './supabase';
-import { SupabaseConnector } from './connector';
 import { ensureSeeded } from '../domain/seed';
+import { connectSync, disconnectSync, reconnectSyncIfNeeded } from './syncLifecycle';
 import { LoginScreen } from './LoginScreen';
 import { PageSpinner } from '../components/ui/misc';
 
@@ -37,7 +37,7 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
   const [initError, setInitError] = React.useState<string | null>(null);
   const [session, setSession] = React.useState<Session | null>(null);
   const [authLoading, setAuthLoading] = React.useState(cloudConfigured);
-  const connectedRef = React.useRef(false);
+  const sessionRef = React.useRef<Session | null>(null);
 
   // Initialize local DB + seed chart of accounts
   React.useEffect(() => {
@@ -83,23 +83,41 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
       });
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+      sessionRef.current = s;
+    });
     return () => subscription.unsubscribe();
   }, []);
 
   React.useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
+  // Connect / disconnect when the signed-in user changes (not on every token refresh).
+  const userId = session?.user?.id ?? null;
+  React.useEffect(() => {
     if (!cloudConfigured || !ready) return;
-    if (session && !connectedRef.current) {
-      connectedRef.current = true;
-      db.connect(new SupabaseConnector()).catch((e) => {
-        console.error('PowerSync connect failed', e);
-        connectedRef.current = false;
-      });
-    } else if (!session && connectedRef.current) {
-      connectedRef.current = false;
-      db.disconnect().catch(console.error);
+    if (userId) {
+      connectSync().catch((e) => console.error('PowerSync connect failed', e));
+    } else {
+      disconnectSync().catch(console.error);
     }
-  }, [session, ready]);
+  }, [userId, ready]);
+
+  // Mobile PWAs lose WebSocket sync when backgrounded — reconnect on wake / online.
+  React.useEffect(() => {
+    if (!cloudConfigured || !ready) return;
+
+    const onWake = () => reconnectSyncIfNeeded(sessionRef.current);
+
+    window.addEventListener('online', onWake);
+    document.addEventListener('visibilitychange', onWake);
+    return () => {
+      window.removeEventListener('online', onWake);
+      document.removeEventListener('visibilitychange', onWake);
+    };
+  }, [ready]);
 
   const signOut = React.useCallback(async () => {
     if (supabase) await supabase.auth.signOut();
@@ -124,15 +142,12 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Cloud configured but not signed in -> login wall
-  if (cloudConfigured && !session) {
-    return <LoginScreen />;
-  }
-
   return (
     <PowerSyncContext.Provider value={db}>
       <QueryClientProvider client={queryClient}>
-        <AuthContext.Provider value={{ session, signOut }}>{children}</AuthContext.Provider>
+        <AuthContext.Provider value={{ session, signOut }}>
+          {cloudConfigured && !session ? <LoginScreen /> : children}
+        </AuthContext.Provider>
       </QueryClientProvider>
     </PowerSyncContext.Provider>
   );

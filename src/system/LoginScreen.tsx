@@ -43,9 +43,11 @@ export function LoginScreen() {
     <div className="flex min-h-dvh items-center justify-center bg-background p-4 sm:p-6">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-2.5 text-center">
-          <div className="flex size-12 items-center justify-center rounded-2xl bg-primary text-xl font-bold text-primary-foreground shadow-md">
-            S
-          </div>
+          <img
+            src="/icon-192.png"
+            alt=""
+            className="size-12 rounded-2xl shadow-md ring-1 ring-border"
+          />
           <h1 className="text-xl font-semibold tracking-tight">Sudo</h1>
           <p className="text-xs text-muted-foreground">Premium offline-first business finance</p>
         </div>

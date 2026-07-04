@@ -1,21 +1,28 @@
-import sharp from 'sharp';
-import { readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const brandDir = join(root, 'brand', 'appstore');
 const publicDir = join(root, 'public');
 
+/** App / PWA icons sourced from brand/appstore (Android + iOS export). */
 const outputs = [
-  { src: 'icon.svg', out: 'favicon.png', size: 32 },
-  { src: 'icon.svg', out: 'apple-touch-icon.png', size: 180 },
-  { src: 'icon.svg', out: 'icon-192.png', size: 192 },
-  { src: 'icon.svg', out: 'icon-512.png', size: 512 },
-  { src: 'icon-maskable.svg', out: 'icon-512-maskable.png', size: 512 },
+  { src: join(brandDir, 'ios', '32.png'), out: 'favicon.png' },
+  { src: join(brandDir, 'ios', '180.png'), out: 'apple-touch-icon.png' },
+  { src: join(brandDir, 'android', 'launchericon-192x192.png'), out: 'icon-192.png' },
+  { src: join(brandDir, 'android', 'launchericon-512x512.png'), out: 'icon-512.png' },
+  { src: join(brandDir, 'android', 'launchericon-512x512.png'), out: 'icon-512-maskable.png' },
 ];
 
-for (const { src, out, size } of outputs) {
-  const svg = readFileSync(join(publicDir, src));
-  await sharp(svg).resize(size, size).png().toFile(join(publicDir, out));
-  console.log(`Wrote public/${out} (${size}x${size})`);
+mkdirSync(publicDir, { recursive: true });
+
+for (const { src, out } of outputs) {
+  if (!existsSync(src)) {
+    console.error(`Missing source icon: ${src}`);
+    console.error('Copy app store exports into brand/appstore/{android,ios}/ first.');
+    process.exit(1);
+  }
+  copyFileSync(src, join(publicDir, out));
+  console.log(`Wrote public/${out}`);
 }
