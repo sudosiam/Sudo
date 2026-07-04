@@ -35,8 +35,9 @@ export async function deleteParty(db: AbstractPowerSyncDatabase, id: string): Pr
   const refs = await db.get<{ n: number }>(
     `SELECT (SELECT COUNT(*) FROM sales WHERE party_id = ?) +
             (SELECT COUNT(*) FROM purchases WHERE party_id = ?) +
-            (SELECT COUNT(*) FROM payments WHERE party_id = ?) AS n`,
-    [id, id, id],
+            (SELECT COUNT(*) FROM payments WHERE party_id = ?) +
+            (SELECT COUNT(*) FROM journal_lines WHERE party_id = ?) AS n`,
+    [id, id, id, id],
   );
   if (refs.n > 0) return false;
   await db.execute(`DELETE FROM parties WHERE id = ?`, [id]);

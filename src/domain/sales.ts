@@ -4,7 +4,7 @@ import { mulQty } from '../lib/money';
 import { ACC } from './accounts';
 import { postEntry, unpostSource } from './ledger';
 import { nextDocNumber } from './docnum';
-import { applySaleToItem, restoreSaleToItem } from './inventory';
+import { applySaleToItem, restoreSaleToItem, assertSaleStock } from './inventory';
 import { getSetting } from './settings';
 import { payStatus, type SaleInput } from './types';
 
@@ -33,14 +33,20 @@ export async function recalcSalePaid(tx: Tx, saleId: string) {
   ]);
 }
 
-async function insertSaleLines(tx: Tx, saleId: string, input: SaleInput) {
+async function insertSaleLines(
+  tx: Tx,
+  saleId: string,
+  input: SaleInput,
+  unitCostByItem?: Map<string, number>,
+) {
+  await assertSaleStock(tx, input.lines);
   let cogs = 0;
   for (const line of input.lines) {
     const item = await tx.getOptional<{ avg_cost: number }>(
       `SELECT avg_cost FROM items WHERE id = ?`,
       [line.itemId],
     );
-    const unitCost = item?.avg_cost ?? 0;
+    const unitCost = unitCostByItem?.get(line.itemId) ?? item?.avg_cost ?? 0;
     const lineTotal = mulQty(line.qty, line.unitPrice);
     cogs += mulQty(line.qty, unitCost);
     await tx.execute(
@@ -171,10 +177,20 @@ export async function updateSale(
       `SELECT invoice_no FROM sales WHERE id = ?`,
       [saleId],
     );
-    const oldLines = await tx.getAll<{ item_id: string; qty: number }>(
-      `SELECT item_id, qty FROM sale_items WHERE sale_id = ?`,
+    const oldLines = await tx.getAll<{ item_id: string; qty: number; unit_cost: number }>(
+      `SELECT item_id, qty, unit_cost FROM sale_items WHERE sale_id = ?`,
       [saleId],
     );
+    const oldCostByItem = new Map<string, number>();
+    for (const l of oldLines) {
+      if (l.item_id) oldCostByItem.set(l.item_id, l.unit_cost);
+    }
+    const oldByItem = new Map<string, number>();
+    for (const l of oldLines) {
+      if (l.item_id) oldByItem.set(l.item_id, (oldByItem.get(l.item_id) ?? 0) + l.qty);
+    }
+
+    await assertSaleStock(tx, input.lines, oldByItem);
     await unpostSource(tx, 'sale', saleId);
     await tx.execute(`DELETE FROM sale_items WHERE sale_id = ?`, [saleId]);
 
@@ -192,7 +208,7 @@ export async function updateSale(
         `SELECT avg_cost FROM items WHERE id = ?`,
         [line.itemId],
       );
-      const unitCost = item?.avg_cost ?? 0;
+      const unitCost = oldCostByItem.get(line.itemId) ?? item?.avg_cost ?? 0;
       cogs += mulQty(line.qty, unitCost);
       await tx.execute(
         `INSERT INTO sale_items (id, sale_id, item_id, name, qty, unit_price, unit_cost, line_total)
@@ -209,16 +225,10 @@ export async function updateSale(
     await syncSalePaymentParties(tx, saleId, input.partyId);
     await recalcSalePaid(tx, saleId);
 
-    const oldByItem = new Map<string, number>();
-    for (const l of oldLines) {
-      if (l.item_id) oldByItem.set(l.item_id, (oldByItem.get(l.item_id) ?? 0) + l.qty);
-    }
-    const newByItem = new Map<string, number>();
-    for (const l of input.lines) {
-      newByItem.set(l.itemId, (newByItem.get(l.itemId) ?? 0) + l.qty);
-    }
-    for (const itemId of new Set([...oldByItem.keys(), ...newByItem.keys()])) {
-      const delta = (newByItem.get(itemId) ?? 0) - (oldByItem.get(itemId) ?? 0);
+    for (const itemId of new Set([...oldByItem.keys(), ...input.lines.map((l) => l.itemId)])) {
+      const delta =
+        input.lines.filter((l) => l.itemId === itemId).reduce((s, l) => s + l.qty, 0) -
+        (oldByItem.get(itemId) ?? 0);
       if (delta > 0) await applySaleToItem(tx, itemId, delta);
       else if (delta < 0) await restoreSaleToItem(tx, itemId, -delta);
     }

@@ -84,6 +84,8 @@ export default function Banking() {
       haptic('success');
       setTransferOpen(false);
       resetCashForm();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Transfer failed');
     } finally {
       setBusy(false);
     }
@@ -121,6 +123,8 @@ export default function Banking() {
       haptic('success');
       setWithdrawOpen(false);
       resetCashForm();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Withdrawal failed');
     } finally {
       setBusy(false);
     }

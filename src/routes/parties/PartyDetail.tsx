@@ -298,7 +298,7 @@ export default function PartyDetail() {
         onClose={() => setDeleteOpen(false)}
         onConfirm={handleDelete}
         title="Delete this party?"
-        message="Only possible when the party has no sales, purchases or payments."
+        message="Only possible when the party has no sales, purchases, payments, or ledger activity."
       />
       <ConfirmDialog
         open={deleteBlocked}

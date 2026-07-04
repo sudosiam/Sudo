@@ -159,6 +159,30 @@ export async function createFixedAsset(db: AbstractPowerSyncDatabase, input: Fix
   return id;
 }
 
+export async function updateFixedAsset(
+  db: AbstractPowerSyncDatabase,
+  id: string,
+  input: FixedAssetInput,
+) {
+  await db.writeTransaction(async (tx) => {
+    await unpostSource(tx, 'fixed_asset', id);
+    await tx.execute(
+      `UPDATE fixed_assets SET name = ?, purchase_date = ?, cost = ?, account_id = ?, note = ? WHERE id = ?`,
+      [input.name, input.purchaseDate, input.cost, input.accountId, input.note || null, id],
+    );
+    await postEntry(tx, {
+      date: input.purchaseDate,
+      memo: `Fixed asset: ${input.name}`,
+      sourceType: 'fixed_asset',
+      sourceId: id,
+      lines: [
+        { accountId: ACC.FIXED_ASSETS, amount: input.cost },
+        { accountId: input.accountId, amount: -input.cost },
+      ],
+    });
+  });
+}
+
 export async function deleteFixedAsset(db: AbstractPowerSyncDatabase, id: string) {
   await db.writeTransaction(async (tx) => {
     await unpostSource(tx, 'fixed_asset', id);

@@ -7,10 +7,11 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select } from '../ui/select';
 import { Textarea } from '../ui/textarea';
-import { Dialog } from '../ui/dialog';
+import { Dialog, ConfirmDialog } from '../ui/dialog';
 import {
   createRecurringExpense,
   updateRecurringExpense,
+  deleteRecurringExpense,
 } from '../../domain/recurringExpenses';
 import { createExpenseCategory } from '../../domain/parties';
 import { parseRupees } from '../../lib/money';
@@ -51,6 +52,7 @@ export function RecurringExpenseDialog({
   const [newCat, setNewCat] = React.useState('');
   const [addingCat, setAddingCat] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   const { data: categories } = useQuery<{ id: string; name: string }>({
     queryKey: ['expense-categories'],
@@ -122,6 +124,7 @@ export function RecurringExpenseDialog({
   };
 
   return (
+    <>
     <Dialog open={open} onClose={onClose} title={editing ? 'Edit recurring expense' : 'New recurring expense'} fullPage>
       <div className="space-y-3">
         <div className="space-y-1.5">
@@ -212,13 +215,41 @@ export function RecurringExpenseDialog({
             Active
           </label>
         )}
-        <div className="flex justify-end gap-2 pt-1">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={save} disabled={busy || !label.trim() || parseRupees(amountText) <= 0}>
-            {editing ? 'Save changes' : 'Save recurring'}
-          </Button>
+        <div className="flex justify-between gap-2 pt-1">
+          {editing ? (
+            <Button
+              variant="outline"
+              className="text-destructive hover:text-destructive"
+              onClick={() => setDeleteOpen(true)}
+            >
+              Delete template
+            </Button>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose}>Cancel</Button>
+            <Button onClick={save} disabled={busy || !label.trim() || parseRupees(amountText) <= 0}>
+              {editing ? 'Save changes' : 'Save recurring'}
+            </Button>
+          </div>
         </div>
       </div>
     </Dialog>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={async () => {
+          if (!recurring?.id) return;
+          await deleteRecurringExpense(db, recurring.id);
+          haptic('success');
+          setDeleteOpen(false);
+          onClose();
+        }}
+        title="Delete recurring template?"
+        message="The template is removed. Expenses already recorded from it stay in your books."
+      />
+    </>
   );
 }

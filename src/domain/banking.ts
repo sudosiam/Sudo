@@ -4,6 +4,33 @@ import { ACC } from './accounts';
 import { postEntry, unpostSource } from './ledger';
 import type { Paise } from '../lib/money';
 
+type Tx = Parameters<Parameters<AbstractPowerSyncDatabase['writeTransaction']>[0]>[0];
+
+/** Manual banking entries that can be reversed from the account page. */
+export const REVERSIBLE_BANK_SOURCE_TYPES = ['adjustment', 'deposit', 'withdrawal'] as const;
+export type ReversibleBankSourceType = (typeof REVERSIBLE_BANK_SOURCE_TYPES)[number];
+
+export function isReversibleBankSource(sourceType: string | null): sourceType is ReversibleBankSourceType {
+  return REVERSIBLE_BANK_SOURCE_TYPES.includes(sourceType as ReversibleBankSourceType);
+}
+
+async function assertAccountBalance(tx: Tx, accountId: string, amount: Paise, label: string) {
+  const row = await tx.getOptional<{ balance: number; name: string }>(
+    `SELECT a.name,
+            COALESCE((SELECT SUM(jl.amount) FROM journal_lines jl WHERE jl.account_id = a.id), 0) AS balance
+     FROM accounts a WHERE a.id = ?`,
+    [accountId],
+  );
+  const balance = row?.balance ?? 0;
+  if (amount > balance) {
+    const need = (amount / 100).toFixed(2);
+    const have = (balance / 100).toFixed(2);
+    throw new Error(
+      `Insufficient balance in ${row?.name ?? label}: need ₹${need}, have ₹${have}`,
+    );
+  }
+}
+
 /** Create a bank/cash-like account with an optional opening balance. */
 export async function createBankAccount(
   db: AbstractPowerSyncDatabase,
@@ -90,6 +117,7 @@ export async function transferBetweenAccounts(
 ) {
   const id = uuid();
   await db.writeTransaction(async (tx) => {
+    await assertAccountBalance(tx, fromId, amount, 'source account');
     await postEntry(tx, {
       date,
       memo: note || 'Transfer between accounts',
@@ -137,6 +165,7 @@ export async function withdrawFromAccount(
 ) {
   const id = uuid();
   await db.writeTransaction(async (tx) => {
+    await assertAccountBalance(tx, accountId, amount, 'account');
     const acct = await tx.getOptional<{ name: string }>(`SELECT name FROM accounts WHERE id = ?`, [accountId]);
     await postEntry(tx, {
       date,
@@ -148,5 +177,24 @@ export async function withdrawFromAccount(
         { accountId: accountId, amount: -amount },
       ],
     });
+  });
+}
+
+/** Reverse a manual deposit, withdrawal, or inter-account transfer. */
+export async function reverseBankingEntry(
+  db: AbstractPowerSyncDatabase,
+  sourceType: string,
+  sourceId: string,
+): Promise<void> {
+  if (!isReversibleBankSource(sourceType)) {
+    throw new Error('This transaction cannot be reversed from here.');
+  }
+  await db.writeTransaction(async (tx) => {
+    const exists = await tx.getOptional<{ id: string }>(
+      `SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ? LIMIT 1`,
+      [sourceType, sourceId],
+    );
+    if (!exists) throw new Error('Transaction not found.');
+    await unpostSource(tx, sourceType, sourceId);
   });
 }

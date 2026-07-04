@@ -1,16 +1,11 @@
 import type { AbstractPowerSyncDatabase } from '@powersync/web';
 import { uuid } from '../lib/utils';
 import { ACC } from './accounts';
+import { replayInventoryState, type InventoryReplayEvent } from './inventoryReplay';
 
 type Tx = Parameters<Parameters<AbstractPowerSyncDatabase['writeTransaction']>[0]>[0];
 
-interface InventoryEvent {
-  kind: 'purchase' | 'sale';
-  date: string;
-  created_at: string;
-  qty: number;
-  unit_price: number;
-}
+interface InventoryEvent extends InventoryReplayEvent {}
 
 export interface RecomputeExclude {
   purchaseId?: string;
@@ -77,19 +72,9 @@ export async function recomputeItemState(
   let qty = item?.opening_qty ?? 0;
   let avgCost = item?.opening_unit_cost ?? 0;
 
-  for (const e of await loadInventoryEvents(tx, itemId, exclude)) {
-    if (e.kind === 'purchase') {
-      const newQty = qty + e.qty;
-      if (newQty > 0) {
-        avgCost = Math.round((qty * avgCost + e.qty * e.unit_price) / newQty);
-      } else {
-        avgCost = e.unit_price;
-      }
-      qty = newQty;
-    } else {
-      qty -= e.qty; // sales never change WAC
-    }
-  }
+  const replayed = replayInventoryState(qty, avgCost, await loadInventoryEvents(tx, itemId, exclude));
+  qty = replayed.qty;
+  avgCost = replayed.avgCost;
 
   await tx.execute(`UPDATE items SET qty = ?, avg_cost = ? WHERE id = ?`, [qty, avgCost, itemId]);
 }
@@ -121,6 +106,36 @@ export async function applySaleToItem(tx: Tx, itemId: string, qty: number): Prom
 /** Restore stock when a sale line is removed (WAC unchanged). */
 export async function restoreSaleToItem(tx: Tx, itemId: string, qty: number): Promise<void> {
   await tx.execute(`UPDATE items SET qty = qty + ? WHERE id = ?`, [qty, itemId]);
+}
+
+/** Fail if a sale would exceed on-hand stock. Pass `creditBack` qty already reserved on this document (edit). */
+export async function assertSaleStock(
+  tx: Tx,
+  lines: { itemId: string; qty: number; name?: string }[],
+  creditBack = new Map<string, number>(),
+) {
+  const needed = new Map<string, { qty: number; name: string }>();
+  for (const line of lines) {
+    const prev = needed.get(line.itemId);
+    needed.set(line.itemId, {
+      qty: (prev?.qty ?? 0) + line.qty,
+      name: line.name ?? prev?.name ?? 'Item',
+    });
+  }
+
+  for (const [itemId, { qty, name }] of needed) {
+    const item = await tx.getOptional<{ qty: number; name: string }>(
+      `SELECT qty, name FROM items WHERE id = ?`,
+      [itemId],
+    );
+    if (!item) throw new Error(`Item not found: ${name}`);
+    const available = (item.qty ?? 0) + (creditBack.get(itemId) ?? 0);
+    if (qty > available + 1e-9) {
+      throw new Error(
+        `Insufficient stock for ${item.name ?? name}: need ${qty}, only ${available} on hand`,
+      );
+    }
+  }
 }
 
 /** One-time backfill of opening_qty/opening_unit_cost for items created before v0.2.2. */

@@ -1,7 +1,7 @@
 ﻿import * as React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { usePowerSync } from '@powersync/react';
-import { Pencil, Trash2, ArrowDownLeft, ArrowUpRight, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
+import { Pencil, Trash2, ArrowDownLeft, ArrowUpRight, ArrowDownToLine, ArrowUpFromLine, Undo2 } from 'lucide-react';
 import { useQuery, useDateClause } from '../../hooks/useQuery';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { ListRow, ListCard } from '../../components/ListRow';
@@ -11,7 +11,7 @@ import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
 import { Dialog, ConfirmDialog } from '../../components/ui/dialog';
 import { EmptyState, PageSpinner } from '../../components/ui/misc';
-import { renameBankAccount, deleteBankAccount, depositToAccount, withdrawFromAccount, setBankAccountIncludeInLiquid } from '../../domain/banking';
+import { renameBankAccount, deleteBankAccount, depositToAccount, withdrawFromAccount, setBankAccountIncludeInLiquid, reverseBankingEntry, isReversibleBankSource } from '../../domain/banking';
 import { sourceLink, sourceLabel } from '../../domain/links';
 import { formatPaise, parseRupees } from '../../lib/money';
 import { todayISO, formatISODateShort } from '../../lib/dates';
@@ -33,6 +33,7 @@ export default function BankAccountPage() {
   const navigate = useNavigate();
   const [renameOpen, setRenameOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [reverseTarget, setReverseTarget] = React.useState<{ sourceType: string; sourceId: string; memo: string } | null>(null);
   const [depositOpen, setDepositOpen] = React.useState(false);
   const [withdrawOpen, setWithdrawOpen] = React.useState(false);
   const [newName, setNewName] = React.useState('');
@@ -186,6 +187,7 @@ export default function BankAccountPage() {
           {txns.map((t) => {
             const link = sourceLink(t.source_type, t.source_id);
             const inflow = t.amount >= 0;
+            const canReverse = isReversibleBankSource(t.source_type) && !!t.source_id;
             return (
               <ListRow
                 key={t.id}
@@ -212,6 +214,28 @@ export default function BankAccountPage() {
                   <span className={inflow ? 'text-success' : 'text-destructive'}>
                     {inflow ? '+' : '−'}{formatPaise(Math.abs(t.amount))}
                   </span>
+                }
+                trailing={
+                  canReverse ? (
+                    <button
+                      type="button"
+                      className="rounded-lg p-1.5 text-muted-foreground hover:text-destructive"
+                      aria-label="Reverse transaction"
+                      title="Reverse"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        haptic();
+                        setReverseTarget({
+                          sourceType: t.source_type!,
+                          sourceId: t.source_id!,
+                          memo: t.memo || sourceLabel(t.source_type),
+                        });
+                      }}
+                    >
+                      <Undo2 className="size-3.5" />
+                    </button>
+                  ) : undefined
                 }
               />
             );
@@ -300,6 +324,19 @@ export default function BankAccountPage() {
         }}
         title={`Delete ${account.name}?`}
         message="Accounts with transaction history are archived instead so your books stay correct."
+      />
+
+      <ConfirmDialog
+        open={!!reverseTarget}
+        onClose={() => setReverseTarget(null)}
+        onConfirm={async () => {
+          if (!reverseTarget) return;
+          await reverseBankingEntry(db, reverseTarget.sourceType, reverseTarget.sourceId);
+          haptic('success');
+          setReverseTarget(null);
+        }}
+        title="Reverse this transaction?"
+        message={`Remove "${reverseTarget?.memo}" from the ledger? This cannot be undone.`}
       />
     </div>
   );

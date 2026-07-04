@@ -1,6 +1,6 @@
 ﻿import * as React from 'react';
 import { usePowerSync } from '@powersync/react';
-import { Plus, Building2, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Building2, Trash2 } from 'lucide-react';
 import { useQuery } from '../hooks/useQuery';
 import { useFabDialog } from '../hooks/useFabDialog';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -12,7 +12,7 @@ import { Label } from '../components/ui/label';
 import { Select } from '../components/ui/select';
 import { Dialog, ConfirmDialog } from '../components/ui/dialog';
 import { EmptyState, PageSpinner } from '../components/ui/misc';
-import { createFixedAsset, deleteFixedAsset } from '../domain/simple';
+import { createFixedAsset, updateFixedAsset, deleteFixedAsset } from '../domain/simple';
 import { formatPaise, formatPaiseRounded, parseRupees } from '../lib/money';
 import { todayISO, formatISODate } from '../lib/dates';
 import { haptic } from '../lib/haptics';
@@ -23,6 +23,7 @@ interface Row {
   purchase_date: string | null;
   cost: number;
   note: string | null;
+  account_id: string | null;
   account_name: string | null;
 }
 
@@ -30,6 +31,12 @@ export default function FixedAssets() {
   const db = usePowerSync();
   const { open: addOpen, openDialog: openAddDialog, closeDialog: closeAddDialog } = useFabDialog();
   const [deleting, setDeleting] = React.useState<string | null>(null);
+  const [editing, setEditing] = React.useState<Row | null>(null);
+  const dialogOpen = addOpen || !!editing;
+  const closeDialog = () => {
+    closeAddDialog();
+    setEditing(null);
+  };
 
   const [name, setName] = React.useState('');
   const [costText, setCostText] = React.useState('');
@@ -46,9 +53,24 @@ export default function FixedAssets() {
     if (!accountId && liquidAccounts?.length) setAccountId(liquidAccounts[0].id);
   }, [liquidAccounts, accountId]);
 
+  React.useEffect(() => {
+    if (editing) {
+      setName(editing.name);
+      setCostText(String(editing.cost / 100));
+      setDate(editing.purchase_date ?? todayISO());
+      setAccountId(editing.account_id ?? '');
+      setNote(editing.note ?? '');
+    } else if (!addOpen) {
+      setName('');
+      setCostText('');
+      setDate(todayISO());
+      setNote('');
+    }
+  }, [editing, addOpen]);
+
   const { data: rows, isLoading } = useQuery<Row>({
     queryKey: ['fixed-assets'],
-    query: `SELECT fa.id, fa.name, fa.purchase_date, fa.cost, fa.note, a.name AS account_name
+    query: `SELECT fa.id, fa.name, fa.purchase_date, fa.cost, fa.note, fa.account_id, a.name AS account_name
             FROM fixed_assets fa LEFT JOIN accounts a ON a.id = fa.account_id
             ORDER BY fa.purchase_date DESC`,
   });
@@ -60,9 +82,12 @@ export default function FixedAssets() {
     if (!name.trim() || cost <= 0 || !accountId) return;
     setBusy(true);
     try {
-      await createFixedAsset(db, { name: name.trim(), purchaseDate: date, cost, accountId, note });
+      const input = { name: name.trim(), purchaseDate: date, cost, accountId, note };
+      if (editing) await updateFixedAsset(db, editing.id, input);
+      else await createFixedAsset(db, input);
       haptic('success');
-      closeAddDialog();
+      closeDialog();
+      setEditing(null);
       setName('');
       setCostText('');
       setNote('');
@@ -113,6 +138,16 @@ export default function FixedAssets() {
               </div>
               <span className="text-sm font-semibold tabular-nums">{formatPaise(r.cost)}</span>
               <button
+                className="rounded-lg p-1 text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  haptic();
+                  setEditing(r);
+                }}
+                aria-label="Edit"
+              >
+                <Pencil className="size-3.5" />
+              </button>
+              <button
                 className="rounded-lg p-1 text-muted-foreground hover:text-destructive"
                 onClick={() => { haptic(); setDeleting(r.id); }}
                 aria-label="Delete"
@@ -124,7 +159,7 @@ export default function FixedAssets() {
         </ListCard>
       )}
 
-      <Dialog open={addOpen} onClose={closeAddDialog} title="New fixed asset" fullPage>
+      <Dialog open={dialogOpen} onClose={closeDialog} title={editing ? 'Edit fixed asset' : 'New fixed asset'} fullPage>
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label>Asset name *</Label>
@@ -153,9 +188,9 @@ export default function FixedAssets() {
             <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional note…" />
           </div>
           <div className="flex justify-end gap-2 pt-1">
-            <Button variant="outline" onClick={closeAddDialog}>Cancel</Button>
+            <Button variant="outline" onClick={closeDialog}>Cancel</Button>
             <Button onClick={save} disabled={busy || !name.trim() || parseRupees(costText) <= 0}>
-              Save asset
+              {editing ? 'Save changes' : 'Save asset'}
             </Button>
           </div>
         </div>
