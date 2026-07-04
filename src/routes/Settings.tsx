@@ -46,6 +46,10 @@ import { formatSyncSchemaError } from '../lib/syncErrors';
 import { clearUploadQueue, formatQueueSize } from '../lib/syncQueue';
 import { useUploadQueue } from '../hooks/useUploadQueue';
 import { useSyncFailures } from '../hooks/useSyncFailures';
+import {
+  clearObsoleteSyncErrorsIfQueueEmpty,
+  isObsoleteSeedAccountSyncError,
+} from '../lib/syncFailures';
 import { APP_VERSION } from '../lib/version';
 import {
   generateMockData,
@@ -231,6 +235,13 @@ export default function Settings() {
     enabled: cloudConfigured,
   });
   const { items: syncFailures, clear: clearSyncFailures } = useSyncFailures();
+
+  React.useEffect(() => {
+    clearObsoleteSyncErrorsIfQueueEmpty(queueStats.count);
+  }, [queueStats.count, syncFailures.length]);
+
+  const allFailuresAreObsoleteSeeds =
+    syncFailures.length > 0 && syncFailures.every(isObsoleteSeedAccountSyncError);
 
   React.useEffect(() => {
     (async () => {
@@ -596,24 +607,49 @@ export default function Settings() {
             </div>
 
             {syncFailures.length > 0 && (
-              <div className="border-b border-destructive/20 bg-destructive/5 px-3.5 py-3 text-sm">
+              <div
+                className={cn(
+                  'border-b px-3.5 py-3 text-sm',
+                  allFailuresAreObsoleteSeeds && queueStats.count === 0
+                    ? 'border-amber-500/20 bg-amber-500/5'
+                    : 'border-destructive/20 bg-destructive/5',
+                )}
+              >
                 <div className="flex items-start gap-3">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
+                  <AlertTriangle
+                    className={cn(
+                      'mt-0.5 size-4 shrink-0',
+                      allFailuresAreObsoleteSeeds && queueStats.count === 0
+                        ? 'text-amber-600 dark:text-amber-500'
+                        : 'text-destructive',
+                    )}
+                  />
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-destructive">
-                      {syncFailures.length} change{syncFailures.length === 1 ? '' : 's'} could not
-                      be synced
+                    <p
+                      className={cn(
+                        'font-medium',
+                        allFailuresAreObsoleteSeeds && queueStats.count === 0
+                          ? 'text-amber-800 dark:text-amber-200'
+                          : 'text-destructive',
+                      )}
+                    >
+                      {allFailuresAreObsoleteSeeds && queueStats.count === 0
+                        ? `${syncFailures.length} past sync warning${syncFailures.length === 1 ? '' : 's'} (resolved)`
+                        : `${syncFailures.length} change${syncFailures.length === 1 ? '' : 's'} could not be synced`}
                     </p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      The cloud rejected these permanently (schema mismatch, permission, or
-                      invalid data). Local data still has them — fix the underlying issue and
-                      re-enter the change.
+                      {allFailuresAreObsoleteSeeds && queueStats.count === 0
+                        ? 'Built-in accounts (Cash, Inventory, etc.) stay on this device only — they no longer upload to cloud. Your upload queue is empty; dismiss to clear this notice.'
+                        : 'The cloud rejected these permanently (schema mismatch, permission, or invalid data). Local data still has them — fix the underlying issue and re-enter the change.'}
                     </p>
                     <ul className="mt-2 max-h-36 space-y-1 overflow-y-auto rounded-lg border bg-muted/30 px-2.5 py-2 font-mono text-[10px] text-muted-foreground">
                       {syncFailures.slice(-10).reverse().map((f, i) => (
-                        <li key={`${f.table}-${f.id}-${i}`} className="whitespace-pre-wrap">
+                        <li key={`${f.table}-${f.id}-${i}`} className="truncate">
                           <span className="text-foreground/80">{f.op}</span> {f.table}{' '}
-                          <span className="opacity-70">{formatSyncSchemaError(f.message)}</span>
+                          <span className="opacity-70">{f.id}</span>
+                          {!allFailuresAreObsoleteSeeds && (
+                            <span className="opacity-70"> — {f.message.split('\n')[0]}</span>
+                          )}
                         </li>
                       ))}
                     </ul>

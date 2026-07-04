@@ -7,6 +7,7 @@
  */
 
 import { useToast } from '../stores/toast';
+import { SEED_ACCOUNT_IDS } from '../domain/accounts';
 
 export interface DiscardedUpload {
   id: string;
@@ -58,6 +59,23 @@ export function getDiscardedUploads(): DiscardedUpload[] {
 
 export function clearDiscardedUploads() {
   save([]);
+}
+
+/** Built-in chart rows that we no longer upload — safe to drop once the queue is clear. */
+export function isObsoleteSeedAccountSyncError(entry: DiscardedUpload): boolean {
+  if (entry.table !== 'accounts' || !String(entry.op).includes('PUT')) return false;
+  if (SEED_ACCOUNT_IDS.has(entry.id)) return true;
+  return entry.message.includes('row-level security policy');
+}
+
+/** Remove stale seed-account RLS log entries when nothing is left to upload. */
+export function clearObsoleteSyncErrorsIfQueueEmpty(queueCount: number): boolean {
+  if (queueCount > 0) return false;
+  const items = load();
+  if (items.length === 0) return false;
+  if (!items.every(isObsoleteSeedAccountSyncError)) return false;
+  clearDiscardedUploads();
+  return true;
 }
 
 export function subscribeDiscardedUploads(listener: Listener): () => void {
