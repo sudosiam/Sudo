@@ -262,6 +262,7 @@ your PowerSync instance so it picks up the new columns:
 | v0.2.0 | `supabase/migrations/20260704_v0_2_0.sql` | `include_in_liquid`, `recurring_expenses` |
 | v0.2.2 | `supabase/migrations/20260704_v0_2_2_inventory_opening.sql` | `opening_qty`, `opening_unit_cost` on items |
 | v0.2.3 | `supabase/migrations/20260704_factory_reset_rpc.sql` | `factory_reset_user()` — wipe local + cloud in Settings |
+| v0.3.0 | `supabase/migrations/20260704_v0_2_3_doc_number_uniqueness.sql` | Unique `(owner_id, invoice_no)` / `(owner_id, bill_no)` |
 
 After v0.2.0, add the `recurring_expenses` line to your PowerSync `sync-rules.yaml` (see section 4) and redeploy sync rules.
 

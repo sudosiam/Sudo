@@ -4,6 +4,31 @@ All notable changes to **Sudo — Business Finance** are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] — 2026-07-04
+
+### Added
+
+- **Local data wipe on sign-out** — clears SQLite, upload queue, TanStack cache, and sync-failure log to prevent cross-user data leaks on shared devices.
+- **Fatal upload error surfacing** — discarded ops logged, toasted, and shown in header + Settings.
+- **Forgot-password flow** — email reset link, friendlier auth errors, password visibility toggle.
+- **Dashboard charts** — 6-month revenue vs expenses bar chart and net-profit trend.
+- **Skeleton loaders** — KPI and list skeletons on Dashboard and primary list routes.
+- **Empty-state CTAs** — Banking, Dues, Other Income, Fixed Assets, GL, Payments.
+- **List pagination** — load-more on Dues, Parties, Inventory, Other Income, GL, and standardized across Sales/Purchases/Payments.
+- **Doc-number collision guards** — local retry loop, peek collision check, Supabase unique indexes.
+- **Sync diagnostics** — `useSyncFailures` hook, cloud factory-reset RPC, token diagnostics module.
+
+### Fixed
+
+- **`paid_amount` capped at document total** on recalc after edits.
+- **Zero-COGS sales** skip erroneous inventory credit journal lines.
+- **Mobile table scroll** — horizontal overflow wrapper fix.
+- **GL debit/credit colors** — consistent signed-amount styling.
+
+### Cloud sync (v0.3.0)
+
+If you use Supabase + PowerSync, run `supabase/migrations/20260704_v0_2_3_doc_number_uniqueness.sql` in the SQL Editor (if not already applied).
+
 ## [0.2.4] — 2026-07-04
 
 ### Added
@@ -99,6 +124,7 @@ If you use Supabase + PowerSync, run `supabase/migrations/20260704_v0_2_0.sql` i
 - Double-entry ledger, General Ledger, Trial Balance, Balance Sheet, and operational reports.
 - Dashboard KPIs, Growth charts, global month filter, light/dark theme, JSON export.
 
+[0.3.0]: https://github.com/sudosiam/Sudo/compare/v0.2.4...v0.3.0
 [0.2.4]: https://github.com/sudosiam/Sudo/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/sudosiam/Sudo/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/sudosiam/Sudo/compare/v0.2.1...v0.2.2
