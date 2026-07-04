@@ -75,7 +75,7 @@ export function Segmented<T extends string>({
     <div
       className={cn(
         'inline-flex max-w-full items-center gap-1 rounded-xl border border-border bg-muted/65 p-1',
-        scrollable ? 'overflow-x-auto flex-nowrap' : 'flex-wrap',
+        scrollable ? 'scroll-touch overflow-x-auto flex-nowrap snap-x snap-mandatory' : 'flex-wrap',
         className,
       )}
     >
@@ -88,7 +88,7 @@ export function Segmented<T extends string>({
             onChange(o.value);
           }}
           className={cn(
-            'shrink-0 rounded-lg px-3 py-1.5 text-center text-xs font-semibold transition-all',
+            'shrink-0 snap-start rounded-lg px-3 py-1.5 text-center text-xs font-semibold transition-[color,background-color,box-shadow] duration-150 ease-out',
             value === o.value
               ? 'bg-card text-foreground shadow-sm'
               : 'text-muted-foreground hover:text-foreground',

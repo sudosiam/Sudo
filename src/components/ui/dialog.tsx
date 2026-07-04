@@ -33,10 +33,11 @@ export function Dialog({
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
+      document.body.style.overflow = prevOverflow;
     };
   }, [open, onClose]);
 
@@ -50,14 +51,14 @@ export function Dialog({
       )}
     >
       <div
-        className="absolute inset-0 bg-black/45 backdrop-blur-[3px]"
+        className="overlay-enter absolute inset-0 bg-black/50 lg:bg-black/45 lg:backdrop-blur-[3px]"
         onClick={onClose}
       />
       <div
         role="dialog"
         aria-modal="true"
         className={cn(
-          'relative z-10 flex w-full flex-col overflow-hidden border shadow-2xl',
+          'sheet-enter gpu-layer relative z-10 flex w-full flex-col overflow-hidden border shadow-2xl',
           fullPage
             ? 'h-dvh max-h-dvh bg-background sm:mx-auto sm:h-auto sm:max-h-[92dvh] sm:max-w-lg sm:rounded-2xl sm:border-border sm:bg-card'
             : 'max-h-[92dvh] rounded-t-3xl border-border bg-card sm:max-w-lg sm:rounded-2xl',
@@ -71,13 +72,13 @@ export function Dialog({
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="rounded-lg p-1.5 text-muted-foreground transition-[color,background-color] duration-150 ease-out hover:bg-accent hover:text-foreground"
             aria-label="Close"
           >
             <X className="size-5 sm:size-4" />
           </button>
         </div>
-        <div className={cn('overflow-y-auto p-4 sm:p-5', fullPage && 'flex-1')}>{children}</div>
+        <div className={cn('scroll-touch overflow-y-auto p-4 sm:p-5', fullPage && 'flex-1')}>{children}</div>
       </div>
     </div>,
     document.body,
@@ -108,7 +109,7 @@ export function ConfirmDialog({
       <div className="mt-4 flex justify-end gap-2">
         <button
           onClick={onClose}
-          className="h-9 rounded-xl border bg-card px-4 text-sm font-semibold hover:bg-accent"
+          className="h-9 rounded-xl border bg-card px-4 text-sm font-semibold transition-[background-color] duration-150 ease-out hover:bg-accent"
         >
           Cancel
         </button>
@@ -118,7 +119,7 @@ export function ConfirmDialog({
             onClose();
           }}
           className={cn(
-            'h-9 rounded-xl px-4 text-sm font-semibold text-white',
+            'h-9 rounded-xl px-4 text-sm font-semibold text-white transition-[background-color,transform] duration-150 ease-out active:scale-[0.98]',
             destructive ? 'bg-destructive hover:bg-destructive/90' : 'bg-primary hover:bg-primary/90',
           )}
         >

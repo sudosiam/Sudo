@@ -42,7 +42,7 @@ export function CreateShortcutsFab() {
   const Icon = action.icon;
 
   return (
-    <div className="fixed bottom-5 right-4 z-40 sm:bottom-6 sm:right-6">
+    <div className="fab-enter fixed bottom-5 right-4 z-40 sm:bottom-6 sm:right-6">
       <Link
         to={action.to}
         className={cn(buttonVariants({ size: 'icon' }), 'size-12 rounded-full shadow-xl')}

@@ -4,6 +4,25 @@ All notable changes to **Sudo — Business Finance** are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.1] — 2026-07-04
+
+### Added
+
+- **Daily auto-backup** — save a JSON backup to a chosen folder once per day (Chrome / Edge File System Access API).
+- **Backup domain module** (`src/domain/backup.ts`) — shared export, import, and factory-reset logic.
+- **Page transitions** and mobile UX polish (touch scrolling, reduced-motion support, dialog body scroll lock fix).
+- **PWA icons** — PNG favicon, apple-touch-icon, and install icons generated from SVG sources.
+- **CI workflow** — lint + build on push/PR to `main`.
+
+### Changed
+
+- Settings redesigned with grouped sections, toggle rows, and factory-reset confirmation phrase.
+- Dialog overlay restores previous `body` overflow instead of clearing it unconditionally.
+
+### Fixed
+
+- Missing PWA / favicon PNG assets referenced by manifest and `index.html`.
+
 ## [0.2.0] — 2026-07-04
 
 ### Added
@@ -45,5 +64,6 @@ If you use Supabase + PowerSync, run `supabase/migrations/20260704_v0_2_0.sql` i
 - Double-entry ledger, General Ledger, Trial Balance, Balance Sheet, and operational reports.
 - Dashboard KPIs, Growth charts, global month filter, light/dark theme, JSON export.
 
+[0.2.1]: https://github.com/sudosiam/Sudo/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/sudosiam/Sudo/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/sudosiam/Sudo/releases/tag/v0.1.0

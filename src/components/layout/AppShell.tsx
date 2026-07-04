@@ -1,11 +1,13 @@
 import * as React from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, ChevronLeft, Moon, Sun, MonitorSmartphone, Wifi, WifiOff, RefreshCw } from 'lucide-react';
-import { useStatus } from '@powersync/react';
+import { usePowerSync, useStatus } from '@powersync/react';
+import { useAutoBackup } from '../../hooks/useAutoBackup';
 import { NAV_ITEMS } from './nav';
 import { MonthFilter, pathnameUsesMonthFilter } from './MonthFilter';
 import { CreateShortcutsFab } from './CreateShortcutsFab';
 import { PageTitleProvider, isSubpage, subpageBackPath, usePageTitleContext } from './pageTitle';
+import { PageTransition } from './PageTransition';
 import { useTheme } from '../../stores/ui';
 import { cn } from '../../lib/utils';
 import { haptic } from '../../lib/haptics';
@@ -16,7 +18,7 @@ function ThemeToggle() {
   const Icon = theme === 'light' ? Sun : theme === 'dark' ? Moon : MonitorSmartphone;
   return (
     <button
-      className="rounded-xl border border-transparent p-2 text-muted-foreground transition-all hover:border-border hover:bg-accent/70 hover:text-foreground"
+      className="rounded-xl border border-transparent p-2 text-muted-foreground transition-[color,background-color,border-color,transform] duration-150 ease-out hover:border-border hover:bg-accent/70 hover:text-foreground"
       onClick={() => {
         haptic();
         setTheme(next);
@@ -65,7 +67,7 @@ function SidebarLink({ to, label, icon: Icon, onNavigate }: (typeof NAV_ITEMS)[n
       }}
       className={({ isActive }) =>
         cn(
-          'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all',
+          'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-[color,background-color,transform] duration-150 ease-out',
           isActive
             ? 'bg-primary/12 text-primary shadow-sm'
             : 'text-muted-foreground hover:bg-accent/75 hover:text-foreground',
@@ -115,7 +117,7 @@ function AppHeaderLeading({ onOpenMenu }: { onOpenMenu: () => void }) {
 
   return (
     <button
-      className="rounded-xl border border-transparent p-2 text-muted-foreground transition-all hover:border-border hover:bg-accent/80 hover:text-foreground lg:hidden"
+      className="rounded-xl border border-transparent p-2 text-muted-foreground transition-[color,background-color,border-color] duration-150 ease-out hover:border-border hover:bg-accent/80 hover:text-foreground lg:hidden"
       onClick={() => {
         haptic();
         if (showBack) navigate(backTo);
@@ -130,6 +132,8 @@ function AppHeaderLeading({ onOpenMenu }: { onOpenMenu: () => void }) {
 }
 
 export function AppShell() {
+  const db = usePowerSync();
+  useAutoBackup(db);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const location = useLocation();
   const showMonthFilter = pathnameUsesMonthFilter(location.pathname);
@@ -145,7 +149,7 @@ export function AppShell() {
           <p className="text-[11px] leading-tight text-muted-foreground">Business Finance</p>
         </div>
       </div>
-      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto scroll-touch">
         {NAV_ITEMS.map((item) => (
           <SidebarLink key={item.to} {...item} onNavigate={() => setDrawerOpen(false)} />
         ))}
@@ -169,14 +173,14 @@ export function AppShell() {
       >
         <div
           className={cn(
-            'absolute inset-0 bg-black/45 backdrop-blur-[1px] transition-opacity',
+            'absolute inset-0 bg-black/50 transition-opacity duration-300 ease-out lg:bg-black/45 lg:backdrop-blur-[1px]',
             drawerOpen ? 'opacity-100' : 'opacity-0',
           )}
           onClick={() => setDrawerOpen(false)}
         />
         <aside
           className={cn(
-            'absolute inset-y-0 left-0 w-[85vw] max-w-[19rem] border-r bg-background px-3 py-3 shadow-2xl transition-transform',
+            'gpu-layer absolute inset-y-0 left-0 w-[85vw] max-w-[19rem] border-r bg-background px-3 py-3 shadow-2xl transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform',
             drawerOpen ? 'translate-x-0' : '-translate-x-full',
           )}
         >
@@ -189,7 +193,7 @@ export function AppShell() {
       <PageTitleProvider>
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Header */}
-          <header className="sticky top-0 z-40 border-b bg-background/75 backdrop-blur-xl">
+          <header className="sticky top-0 z-40 border-b bg-background/92 backdrop-blur-md supports-[backdrop-filter]:bg-background/80 lg:bg-background/75 lg:backdrop-blur-xl">
             <div className="mx-auto flex w-full max-w-[1200px] items-center gap-2 px-3 py-2 sm:px-5">
               <div className="flex min-w-0 items-center gap-2">
                 <AppHeaderLeading onOpenMenu={() => setDrawerOpen(true)} />
@@ -204,8 +208,8 @@ export function AppShell() {
           </header>
 
           {/* Page content */}
-          <main className="mx-auto w-full max-w-[1200px] flex-1 px-3 pb-20 pt-4 sm:px-5 sm:pt-5 lg:pb-10">
-            <Outlet />
+          <main className="mx-auto w-full max-w-[1200px] flex-1 scroll-touch px-3 pb-20 pt-4 sm:px-5 sm:pt-5 lg:pb-10">
+            <PageTransition />
           </main>
           <CreateShortcutsFab />
         </div>

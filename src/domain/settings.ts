@@ -6,6 +6,8 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   invoice_prefix: 'INV',
   purchase_prefix: 'PUR',
   haptics: '1',
+  auto_backup_enabled: '0',
+  auto_backup_last_date: '',
 };
 
 export async function getSetting(db: AbstractPowerSyncDatabase, key: string): Promise<string> {

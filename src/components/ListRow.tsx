@@ -49,8 +49,8 @@ export function ListRow({
   );
 
   const cls = cn(
-    'flex w-full items-center gap-2.5 border-b px-3.5 py-3 text-left last:border-b-0 sm:gap-3',
-    to && 'transition-colors hover:bg-accent/45 active:bg-accent/70',
+    'flex w-full items-center gap-2.5 border-b px-3.5 py-3 text-left last:border-b-0 sm:gap-3 touch-manipulation',
+    to && 'transition-[background-color,transform] duration-150 ease-out hover:bg-accent/45 active:scale-[0.995] active:bg-accent/70',
     className,
   );
 

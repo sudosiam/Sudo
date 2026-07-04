@@ -2,3 +2,7 @@
 /// <reference types="vite-plugin-pwa/client" />
 
 declare const __APP_VERSION__: string;
+
+interface Window {
+  showDirectoryPicker?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<FileSystemDirectoryHandle>;
+}
