@@ -4,6 +4,14 @@ All notable changes to **Sudo — Business Finance** are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.3] — 2026-07-04
+
+### Fixed
+
+- **Delete inventory item** — removes the opening-stock journal entry (inventory was overstated in the ledger).
+- **Delete purchase** — inventory/WAC recomputed before row deletion (same class of bug as sale delete).
+- **Edit sale/purchase customer** — linked payment records and AR/AP journal lines follow the new party.
+
 ## [0.2.2] — 2026-07-04
 
 ### Fixed
@@ -75,6 +83,7 @@ If you use Supabase + PowerSync, run `supabase/migrations/20260704_v0_2_0.sql` i
 - Double-entry ledger, General Ledger, Trial Balance, Balance Sheet, and operational reports.
 - Dashboard KPIs, Growth charts, global month filter, light/dark theme, JSON export.
 
+[0.2.3]: https://github.com/sudosiam/Sudo/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/sudosiam/Sudo/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/sudosiam/Sudo/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/sudosiam/Sudo/compare/v0.1.0...v0.2.0

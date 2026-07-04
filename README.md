@@ -4,7 +4,7 @@ Offline-first business finance & accounting PWA for a solo business owner.
 Local SQLite in the browser (PowerSync) synced in real time to Supabase Postgres,
 with a proper double-entry ledger underneath every transaction.
 
-**Current version:** 0.2.2 · [Changelog](./CHANGELOG.md)
+**Current version:** 0.2.3 · [Changelog](./CHANGELOG.md)
 
 ## Highlights
 

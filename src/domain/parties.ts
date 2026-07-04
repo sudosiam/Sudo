@@ -153,7 +153,10 @@ export async function deleteItem(db: AbstractPowerSyncDatabase, id: string): Pro
     [id, id],
   );
   if (refs.n > 0) return false;
-  await db.execute(`DELETE FROM items WHERE id = ?`, [id]);
+  await db.writeTransaction(async (tx) => {
+    await unpostSource(tx, 'opening', id);
+    await tx.execute(`DELETE FROM items WHERE id = ?`, [id]);
+  });
   return true;
 }
 

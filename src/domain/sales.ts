@@ -145,6 +145,22 @@ export async function createSale(db: AbstractPowerSyncDatabase, input: SaleInput
   return saleId;
 }
 
+async function syncSalePaymentParties(tx: Tx, saleId: string, partyId: string) {
+  const paymentIds = await tx.getAll<{ payment_id: string }>(
+    `SELECT DISTINCT payment_id FROM payment_allocations WHERE sale_id = ?`,
+    [saleId],
+  );
+  for (const { payment_id } of paymentIds) {
+    await tx.execute(`UPDATE payments SET party_id = ? WHERE id = ?`, [partyId, payment_id]);
+    await tx.execute(
+      `UPDATE journal_lines SET party_id = ?
+       WHERE entry_id IN (SELECT id FROM journal_entries WHERE source_type = 'payment' AND source_id = ?)
+         AND account_id = ?`,
+      [partyId, payment_id, ACC.AR],
+    );
+  }
+}
+
 export async function updateSale(
   db: AbstractPowerSyncDatabase,
   saleId: string,
@@ -190,9 +206,7 @@ export async function updateSale(
       saleId,
     ]);
     await postSaleEntry(tx, saleId, sale.invoice_no, input, total, cogs);
-
-    // Any new receipts added during edit
-    await createReceiptPayments(tx, saleId, input);
+    await syncSalePaymentParties(tx, saleId, input.partyId);
     await recalcSalePaid(tx, saleId);
 
     const oldByItem = new Map<string, number>();

@@ -52,6 +52,22 @@ async function postPurchaseEntry(
   });
 }
 
+async function syncPurchasePaymentParties(tx: Tx, purchaseId: string, partyId: string) {
+  const paymentIds = await tx.getAll<{ payment_id: string }>(
+    `SELECT DISTINCT payment_id FROM payment_allocations WHERE purchase_id = ?`,
+    [purchaseId],
+  );
+  for (const { payment_id } of paymentIds) {
+    await tx.execute(`UPDATE payments SET party_id = ? WHERE id = ?`, [partyId, payment_id]);
+    await tx.execute(
+      `UPDATE journal_lines SET party_id = ?
+       WHERE entry_id IN (SELECT id FROM journal_entries WHERE source_type = 'payment' AND source_id = ?)
+         AND account_id = ?`,
+      [partyId, payment_id, ACC.AP],
+    );
+  }
+}
+
 async function createOutPayments(tx: Tx, purchaseId: string, input: PurchaseInput) {
   for (const p of input.payments.filter((p) => p.amount > 0)) {
     const paymentId = uuid();
@@ -142,7 +158,7 @@ export async function updatePurchase(
       );
     }
     await postPurchaseEntry(tx, purchaseId, purchase.bill_no, input, total);
-    await createOutPayments(tx, purchaseId, input);
+    await syncPurchasePaymentParties(tx, purchaseId, input.partyId);
     await recalcPurchasePaid(tx, purchaseId);
 
     const affected = new Set<string>([
@@ -183,8 +199,10 @@ export async function deletePurchase(
       }
     }
 
+    for (const { item_id } of affectedItems) {
+      await recomputeItemState(tx, item_id, { purchaseId });
+    }
     await tx.execute(`DELETE FROM purchase_items WHERE purchase_id = ?`, [purchaseId]);
     await tx.execute(`DELETE FROM purchases WHERE id = ?`, [purchaseId]);
-    for (const { item_id } of affectedItems) await recomputeItemState(tx, item_id);
   });
 }

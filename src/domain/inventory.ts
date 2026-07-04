@@ -12,20 +12,29 @@ interface InventoryEvent {
   unit_price: number;
 }
 
-async function loadInventoryEvents(tx: Tx, itemId: string): Promise<InventoryEvent[]> {
+export interface RecomputeExclude {
+  purchaseId?: string;
+  saleId?: string;
+}
+
+async function loadInventoryEvents(
+  tx: Tx,
+  itemId: string,
+  exclude?: RecomputeExclude,
+): Promise<InventoryEvent[]> {
   const purchases = await tx.getAll<InventoryEvent>(
     `SELECT 'purchase' AS kind, p.date AS date, p.created_at AS created_at,
             pi.qty AS qty, pi.unit_price AS unit_price
      FROM purchase_items pi JOIN purchases p ON p.id = pi.purchase_id
-     WHERE pi.item_id = ?`,
-    [itemId],
+     WHERE pi.item_id = ?${exclude?.purchaseId ? ' AND pi.purchase_id != ?' : ''}`,
+    exclude?.purchaseId ? [itemId, exclude.purchaseId] : [itemId],
   );
   const sales = await tx.getAll<InventoryEvent>(
     `SELECT 'sale' AS kind, s.date AS date, s.created_at AS created_at,
             si.qty AS qty, 0 AS unit_price
      FROM sale_items si JOIN sales s ON s.id = si.sale_id
-     WHERE si.item_id = ?`,
-    [itemId],
+     WHERE si.item_id = ?${exclude?.saleId ? ' AND si.sale_id != ?' : ''}`,
+    exclude?.saleId ? [itemId, exclude.saleId] : [itemId],
   );
 
   return [...purchases, ...sales].sort(
@@ -34,9 +43,13 @@ async function loadInventoryEvents(tx: Tx, itemId: string): Promise<InventoryEve
 }
 
 /** Qty after replaying purchases/sales only (no opening stock). */
-async function replayTransactionQty(tx: Tx, itemId: string): Promise<number> {
+async function replayTransactionQty(
+  tx: Tx,
+  itemId: string,
+  exclude?: RecomputeExclude,
+): Promise<number> {
   let qty = 0;
-  for (const e of await loadInventoryEvents(tx, itemId)) {
+  for (const e of await loadInventoryEvents(tx, itemId, exclude)) {
     qty += e.kind === 'purchase' ? e.qty : -e.qty;
   }
   return qty;
@@ -48,8 +61,15 @@ async function replayTransactionQty(tx: Tx, itemId: string): Promise<number> {
  *
  * Used after purchase edits/deletes where WAC must be rebuilt.
  * Sale edits/deletes use incremental restore/apply instead.
+ *
+ * Pass `exclude` when recomputing before a document is deleted so the
+ * replay matches post-delete state even within the same transaction.
  */
-export async function recomputeItemState(tx: Tx, itemId: string): Promise<void> {
+export async function recomputeItemState(
+  tx: Tx,
+  itemId: string,
+  exclude?: RecomputeExclude,
+): Promise<void> {
   const item = await tx.getOptional<{ opening_qty: number; opening_unit_cost: number }>(
     `SELECT opening_qty, opening_unit_cost FROM items WHERE id = ?`,
     [itemId],
@@ -57,7 +77,7 @@ export async function recomputeItemState(tx: Tx, itemId: string): Promise<void> 
   let qty = item?.opening_qty ?? 0;
   let avgCost = item?.opening_unit_cost ?? 0;
 
-  for (const e of await loadInventoryEvents(tx, itemId)) {
+  for (const e of await loadInventoryEvents(tx, itemId, exclude)) {
     if (e.kind === 'purchase') {
       const newQty = qty + e.qty;
       if (newQty > 0) {
