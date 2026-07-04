@@ -134,11 +134,17 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
               // System accounts are seeded locally per device/user; uploading them
               // collides with another user's row (global PK) and fails RLS.
               if (isSystemAccountOp(op)) continue;
-              result = await table.upsert(
-                op.table === 'accounts'
-                  ? accountPutPayload(op, ownerId)
-                  : { ...(op.opData ?? {}), id: op.id, owner_id: ownerId },
-              );
+              if (op.table === 'accounts') {
+                result = await supabase
+                  .from('accounts')
+                  .upsert(accountPutPayload(op, ownerId));
+              } else {
+                result = await table.upsert({
+                  ...(op.opData ?? {}),
+                  id: op.id,
+                  owner_id: ownerId,
+                });
+              }
               break;
             case UpdateType.PATCH:
               result = await table.update(op.opData ?? {}).eq('id', op.id).eq('owner_id', ownerId);
