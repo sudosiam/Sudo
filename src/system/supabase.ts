@@ -9,5 +9,6 @@ export const cloudConfigured = Boolean(url && anonKey);
 export const supabase: SupabaseClient | null = cloudConfigured
   ? createClient(url!, anonKey!, {
       auth: { persistSession: true, autoRefreshToken: true },
+      realtime: { params: { eventsPerSecond: 20 } },
     })
   : null;

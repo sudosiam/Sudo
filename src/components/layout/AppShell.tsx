@@ -41,21 +41,24 @@ function SyncIndicator() {
 
   if (!cloudConfigured) return null;
 
-  const online = navigator.onLine && sync.connected;
+  const browserOnline = navigator.onLine;
   const pending = sync.pendingUploads;
   const hasFailures = failures.length > 0;
   const syncError = sync.error;
-  const syncing = sync.syncing || (pending > 0 && !syncError);
+  const syncing = sync.syncing || sync.connecting || (pending > 0 && !syncError);
+  const live = sync.connected;
 
   let label = 'Offline';
-  if (online) {
-    if (hasFailures) label = `${failures.length} not synced`;
-    else if (syncError) label = 'Sync error';
-    else if (syncing) label = pending > 0 ? `Syncing (${pending})` : 'Syncing';
-    else label = 'Live';
-  }
+  if (!browserOnline) label = 'Offline';
+  else if (hasFailures) label = `${failures.length} not synced`;
+  else if (syncError) label = 'Sync error';
+  else if (live && !syncing) label = 'Live';
+  else if (sync.connecting) label = 'Connecting';
+  else if (syncing) label = pending > 0 ? `Syncing (${pending})` : 'Syncing';
+  else label = 'Connecting';
 
   const isError = !!syncError || hasFailures;
+  const showLive = browserOnline && live && !isError && !syncing;
 
   return (
     <button
@@ -65,21 +68,23 @@ function SyncIndicator() {
         'flex max-w-[11rem] items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-medium transition-[background-color] duration-150 ease-out',
         isError
           ? 'border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15'
-          : online
+          : showLive
             ? 'border-success/30 bg-success/10 text-success hover:bg-success/15'
-            : 'border-border bg-card/65 text-muted-foreground hover:bg-accent/60',
+            : browserOnline
+              ? 'border-border bg-card/65 text-muted-foreground hover:bg-accent/60'
+              : 'border-border bg-card/65 text-muted-foreground hover:bg-accent/60',
       )}
       title={
         hasFailures
           ? `${failures.length} change${failures.length === 1 ? '' : 's'} could not be synced to the cloud — tap for details.`
-          : (syncError ?? (online ? 'Supabase Realtime connected' : 'Offline — changes saved locally'))
+          : (syncError ?? (showLive ? 'Supabase Realtime connected' : browserOnline ? 'Connecting to cloud…' : 'Offline — changes saved locally'))
       }
     >
       {isError ? (
         <AlertCircle className="size-3.5 shrink-0" />
       ) : syncing ? (
         <RefreshCw className="size-3.5 shrink-0 animate-spin" />
-      ) : online ? (
+      ) : showLive ? (
         <Wifi className="size-3.5 shrink-0" />
       ) : (
         <WifiOff className="size-3.5 shrink-0" />

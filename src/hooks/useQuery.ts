@@ -1,11 +1,10 @@
 /**
- * Reactive query hooks: local SQLite reads + TanStack Query caching.
- * Invalidates when local writes or Supabase Realtime events change data.
+ * Reactive query hooks: PowerSync SQLite watch for instant local updates.
+ * Watches re-run automatically when dependent tables change (local writes or Realtime).
  */
 import * as React from 'react';
-import { useQuery as useTanstackQuery, useQueryClient } from '@tanstack/react-query';
+import type { QueryResult } from '@powersync/common';
 import { db } from '../system/db';
-import { subscribeQueryInvalidation } from '../system/queryBus';
 import { useMonthFilter, monthFilterRange } from '../stores/ui';
 
 export { db };
@@ -22,23 +21,46 @@ interface SqlQueryOptions {
   enabled?: boolean;
 }
 
-export function useQuery<T>(opts: SqlQueryOptions) {
-  const queryClient = useQueryClient();
-  const { queryKey, query, parameters = [], enabled = true } = opts;
+function rowsFromResult<T>(result: QueryResult): T[] {
+  return (result.rows?._array ?? []) as T[];
+}
 
-  const serializedKey = JSON.stringify(queryKey);
+export function useQuery<T>(opts: SqlQueryOptions) {
+  const { query, parameters = [], enabled = true } = opts;
+  const [data, setData] = React.useState<T[] | undefined>(undefined);
+  const [isLoading, setIsLoading] = React.useState(enabled);
+  const serializedParams = JSON.stringify(parameters);
 
   React.useEffect(() => {
-    return subscribeQueryInvalidation(() => {
-      void queryClient.invalidateQueries({ queryKey });
-    });
-  }, [queryClient, serializedKey]);
+    if (!enabled) {
+      setIsLoading(false);
+      return;
+    }
 
-  return useTanstackQuery<T[]>({
-    queryKey,
-    enabled,
-    queryFn: () => db.getAll<T>(query, parameters),
-  });
+    const abort = new AbortController();
+    setIsLoading(true);
+
+    db.watch(
+      query,
+      parameters,
+      {
+        onResult: (result) => {
+          if (abort.signal.aborted) return;
+          setData(rowsFromResult<T>(result));
+          setIsLoading(false);
+        },
+        onError: () => {
+          if (abort.signal.aborted) return;
+          setIsLoading(false);
+        },
+      },
+      { signal: abort.signal, throttleMs: 0 },
+    );
+
+    return () => abort.abort();
+  }, [query, serializedParams, enabled]);
+
+  return { data, isLoading };
 }
 
 /** Active month range for SQL filters, or null when "All time" */

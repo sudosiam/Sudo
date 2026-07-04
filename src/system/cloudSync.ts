@@ -22,6 +22,7 @@ const FATAL_RESPONSE_CODES = [
 
 export type CloudSyncStatus = {
   connected: boolean;
+  connecting: boolean;
   syncing: boolean;
   lastSyncedAt: Date | null;
   error: string | null;
@@ -33,6 +34,7 @@ type StatusListener = (status: CloudSyncStatus) => void;
 let channel: RealtimeChannel | null = null;
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
 let pushInFlight = false;
+let pushAgainWhenDone = false;
 let pullInFlight = false;
 let activeUserId: string | null = null;
 
@@ -40,6 +42,7 @@ const statusListeners = new Set<StatusListener>();
 
 let status: CloudSyncStatus = {
   connected: false,
+  connecting: false,
   syncing: false,
   lastSyncedAt: null,
   error: null,
@@ -112,10 +115,26 @@ function rowToUpsertSql(table: string, row: Record<string, unknown>) {
   };
 }
 
-async function applyRemoteRow(table: string, row: Record<string, unknown>) {
+function putPayload(op: CrudEntry, ownerId: string) {
+  if (op.table === 'accounts') return accountPutPayload(op, ownerId);
+  return { ...(op.opData ?? {}), id: op.id, owner_id: ownerId };
+}
+
+async function applyRemoteInsert(table: string, row: Record<string, unknown>) {
   const stmt = rowToUpsertSql(table, row);
   if (!stmt) return;
   await withoutMutationHooks(() => db.execute(stmt.sql, stmt.params));
+}
+
+async function applyRemotePatch(table: string, row: Record<string, unknown>) {
+  const { owner_id: _owner, id, ...rest } = row;
+  if (typeof id !== 'string') return;
+  const cols = Object.keys(rest);
+  if (cols.length === 0) return;
+  const sets = cols.map((c) => `${c} = ?`).join(', ');
+  await withoutMutationHooks(() =>
+    db.execute(`UPDATE ${table} SET ${sets} WHERE id = ?`, [...cols.map((c) => rest[c]), id]),
+  );
 }
 
 async function applyRemoteDelete(table: string, id: string) {
@@ -128,17 +147,23 @@ export async function pullFromCloud(userId: string) {
   pullInFlight = true;
   emitStatus({ syncing: true, error: null });
   try {
-    for (const table of INSERT_ORDER) {
-      if (table === 'drafts') continue;
-      if (!SYNCED_TABLES.includes(table as (typeof SYNCED_TABLES)[number])) continue;
+    const tables = INSERT_ORDER.filter(
+      (t) => t !== 'drafts' && SYNCED_TABLES.includes(t as (typeof SYNCED_TABLES)[number]),
+    );
 
-      const { data, error } = await supabase.from(table).select('*').eq('owner_id', userId);
-      if (error) throw error;
+    const results = await Promise.all(
+      tables.map(async (table) => {
+        const { data, error } = await supabase!.from(table).select('*').eq('owner_id', userId);
+        if (error) throw error;
+        return { table, rows: data ?? [] };
+      }),
+    );
 
+    for (const { table, rows } of results) {
       await withoutMutationHooks(() =>
         db.writeTransaction(async (tx) => {
           await tx.execute(`DELETE FROM ${table}`);
-          for (const row of data ?? []) {
+          for (const row of rows) {
             const stmt = rowToUpsertSql(table, row as Record<string, unknown>);
             if (stmt) await tx.execute(stmt.sql, stmt.params);
           }
@@ -155,13 +180,64 @@ export async function pullFromCloud(userId: string) {
     throw e;
   } finally {
     pullInFlight = false;
-    emitStatus({ syncing: false, pendingUploads: await countPendingUploads(db) });
+    emitStatus({ syncing: pushInFlight, pendingUploads: await countPendingUploads(db) });
   }
 }
 
-/** Drain the local CRUD queue to Supabase (same logic as the old PowerSync connector). */
+/** Upload one CRUD batch — batch PUTs per table to cut round-trips on multi-row writes. */
+async function uploadCrudBatch(crud: CrudEntry[], ownerId: string) {
+  if (!supabase) return;
+  let i = 0;
+  while (i < crud.length) {
+    const op = crud[i]!;
+    if (op.op === UpdateType.PUT) {
+      if (shouldSkipAccountUpload(op)) {
+        i++;
+        continue;
+      }
+      const table = op.table;
+      const batch: CrudEntry[] = [];
+      while (i < crud.length) {
+        const next = crud[i]!;
+        if (next.op !== UpdateType.PUT || next.table !== table || shouldSkipAccountUpload(next)) break;
+        batch.push(next);
+        i++;
+      }
+      const rows = batch.map((entry) => putPayload(entry, ownerId));
+      const result = await supabase.from(table).upsert(rows);
+      if (result.error) {
+        (result.error as Error & { code?: string }).message ||= 'Supabase upload error';
+        throw result.error;
+      }
+      continue;
+    }
+
+    const table = supabase.from(op.table);
+    let result: { error: { message?: string; code?: string } | null } | null = null;
+    switch (op.op) {
+      case UpdateType.PATCH:
+        result = await table.update(op.opData ?? {}).eq('id', op.id).eq('owner_id', ownerId);
+        break;
+      case UpdateType.DELETE:
+        result = await table.delete().eq('id', op.id).eq('owner_id', ownerId);
+        break;
+    }
+    if (result?.error) {
+      (result.error as Error & { code?: string }).message ||= 'Supabase upload error';
+      throw result.error;
+    }
+    i++;
+  }
+}
+
+/** Drain the local CRUD queue to Supabase. */
 export async function pushPendingChanges() {
-  if (!supabase || pushInFlight) return;
+  if (!supabase) return;
+  if (pushInFlight) {
+    pushAgainWhenDone = true;
+    return;
+  }
+
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -173,6 +249,7 @@ export async function pushPendingChanges() {
 
   const maxOpsPerCall = 200;
   let uploadedOps = 0;
+  let drainedPartially = false;
 
   try {
     for (;;) {
@@ -181,38 +258,14 @@ export async function pushPendingChanges() {
 
       let lastOp: CrudEntry | null = null;
       try {
-        for (const op of transaction.crud) {
-          lastOp = op;
-          const table = supabase.from(op.table);
-          let result: { error: { message?: string; code?: string } | null } | null = null;
-          switch (op.op) {
-            case UpdateType.PUT:
-              if (shouldSkipAccountUpload(op)) continue;
-              if (op.table === 'accounts') {
-                result = await supabase.from('accounts').upsert(accountPutPayload(op, ownerId));
-              } else {
-                result = await table.upsert({
-                  ...(op.opData ?? {}),
-                  id: op.id,
-                  owner_id: ownerId,
-                });
-              }
-              break;
-            case UpdateType.PATCH:
-              result = await table.update(op.opData ?? {}).eq('id', op.id).eq('owner_id', ownerId);
-              break;
-            case UpdateType.DELETE:
-              result = await table.delete().eq('id', op.id).eq('owner_id', ownerId);
-              break;
-          }
-          if (result?.error) {
-            (result.error as Error & { code?: string }).message ||= 'Supabase upload error';
-            throw result.error;
-          }
-        }
+        lastOp = transaction.crud[transaction.crud.length - 1] ?? null;
+        await uploadCrudBatch(transaction.crud, ownerId);
         await transaction.complete();
         uploadedOps += transaction.crud.length;
-        if (uploadedOps >= maxOpsPerCall) break;
+        if (uploadedOps >= maxOpsPerCall) {
+          drainedPartially = true;
+          break;
+        }
       } catch (ex) {
         if (isFatalUploadError(ex)) {
           console.error('Discarding non-retryable upload operation', lastOp, ex);
@@ -238,17 +291,25 @@ export async function pushPendingChanges() {
   } finally {
     pushInFlight = false;
     const pending = await countPendingUploads(db);
-    emitStatus({ syncing: false, pendingUploads: pending });
+    emitStatus({ syncing: pullInFlight, pendingUploads: pending });
+    const again = pushAgainWhenDone;
+    pushAgainWhenDone = false;
+    if (pending > 0 && (again || drainedPartially)) {
+      queueMicrotask(() => {
+        pushPendingChanges().catch((e) => console.error('pushPendingChanges chained failed', e));
+      });
+    }
   }
 }
 
 export function schedulePush() {
   if (!cloudConfigured || !navigator.onLine) return;
-  if (pushTimer) return;
+  if (pushTimer) clearTimeout(pushTimer);
+  // Brief coalesce for rapid keystrokes; still far faster than the old 500ms debounce.
   pushTimer = setTimeout(() => {
     pushTimer = null;
     pushPendingChanges().catch((e) => console.error('pushPendingChanges failed', e));
-  }, 500);
+  }, 16);
 }
 
 async function handleRealtimePayload(
@@ -259,9 +320,15 @@ async function handleRealtimePayload(
     if (payload.eventType === 'DELETE') {
       const id = payload.old?.id;
       if (typeof id === 'string') await applyRemoteDelete(table, id);
+    } else if (payload.eventType === 'UPDATE') {
+      if (payload.new && Object.keys(payload.new).length > 0) {
+        await applyRemotePatch(table, payload.new);
+        await withoutMutationHooks(() =>
+          db.execute(`DELETE FROM ps_crud WHERE data LIKE ?`, [`%"id":"${payload.new.id}"%`]),
+        );
+      }
     } else if (payload.new && Object.keys(payload.new).length > 0) {
-      await applyRemoteRow(table, payload.new);
-      // Drop CRUD entries for this row so we don't re-upload what we just pulled.
+      await applyRemoteInsert(table, payload.new);
       await withoutMutationHooks(() =>
         db.execute(`DELETE FROM ps_crud WHERE data LIKE ?`, [`%"id":"${payload.new.id}"%`]),
       );
@@ -273,17 +340,23 @@ async function handleRealtimePayload(
   }
 }
 
-function stopRealtime() {
+function removeRealtimeChannel() {
   if (channel && supabase) {
     void supabase.removeChannel(channel);
   }
   channel = null;
-  emitStatus({ connected: false });
+}
+
+function stopRealtime() {
+  removeRealtimeChannel();
+  emitStatus({ connected: false, connecting: false });
 }
 
 function startRealtime(userId: string) {
   if (!supabase) return;
-  stopRealtime();
+  removeRealtimeChannel();
+
+  emitStatus({ connecting: true, connected: false });
 
   const ch = supabase.channel(`sudo-realtime-${userId}`);
   for (const table of SYNCED_TABLES) {
@@ -298,7 +371,12 @@ function startRealtime(userId: string) {
 
   ch.subscribe((state) => {
     const connected = state === 'SUBSCRIBED';
-    emitStatus({ connected, error: connected ? null : status.error });
+    const failed = state === 'CLOSED' || state === 'CHANNEL_ERROR' || state === 'TIMED_OUT';
+    emitStatus({
+      connected,
+      connecting: !connected && !failed,
+      error: failed ? status.error ?? 'Realtime connection failed' : connected ? null : status.error,
+    });
     if (connected && navigator.onLine) {
       void pushPendingChanges().catch((e) => console.error('push on realtime connect failed', e));
     }
@@ -307,18 +385,23 @@ function startRealtime(userId: string) {
   channel = ch;
 }
 
-/** Full cloud sync lifecycle: push local → pull remote → subscribe to Realtime. */
+/** Full cloud sync lifecycle: Realtime first, then push/pull in background. */
 export async function startCloudSync(userId: string) {
   if (!cloudConfigured || !supabase) return;
   activeUserId = userId;
   emitStatus({ error: null });
-  try {
-    await pushPendingChanges();
-    await pullFromCloud(userId);
-    startRealtime(userId);
-  } catch (e) {
-    console.error('startCloudSync failed', e);
-  }
+
+  // Show "Live" as soon as Realtime connects — don't block on full data pull.
+  startRealtime(userId);
+
+  void (async () => {
+    try {
+      await pushPendingChanges();
+      await pullFromCloud(userId);
+    } catch (e) {
+      console.error('startCloudSync background sync failed', e);
+    }
+  })();
 }
 
 export function stopCloudSync() {
@@ -330,6 +413,7 @@ export function stopCloudSync() {
   }
   emitStatus({
     connected: false,
+    connecting: false,
     syncing: false,
     pendingUploads: 0,
     error: null,

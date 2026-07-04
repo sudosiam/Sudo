@@ -67,19 +67,31 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     if (!supabase) return;
-    supabase.auth
+    const client = supabase;
+    client.auth
       .getSession()
-      .then(({ data }) => {
-        setSession(data.session);
+      .then(async ({ data, error }) => {
+        if (error) {
+          await client.auth.signOut({ scope: 'local' });
+          setSession(null);
+        } else {
+          setSession(data.session);
+        }
         setAuthLoading(false);
       })
-      .catch((e) => {
-        console.error('Auth session check failed', e);
+      .catch(async (e) => {
+        console.warn('Auth session check failed, clearing local session', e);
+        try {
+          await client.auth.signOut({ scope: 'local' });
+        } catch {
+          /* ignore */
+        }
+        setSession(null);
         setAuthLoading(false);
       });
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, s) => {
+    } = client.auth.onAuthStateChange((_event, s) => {
       setSession(s);
       sessionRef.current = s;
     });
