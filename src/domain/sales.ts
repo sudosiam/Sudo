@@ -4,7 +4,7 @@ import { mulQty } from '../lib/money';
 import { ACC } from './accounts';
 import { postEntry, unpostSource } from './ledger';
 import { nextDocNumber } from './docnum';
-import { applySaleToItem, recomputeItemState } from './inventory';
+import { applySaleToItem, restoreSaleToItem } from './inventory';
 import { getSetting } from './settings';
 import { payStatus, type SaleInput } from './types';
 
@@ -155,8 +155,8 @@ export async function updateSale(
       `SELECT invoice_no FROM sales WHERE id = ?`,
       [saleId],
     );
-    const oldItems = await tx.getAll<{ item_id: string }>(
-      `SELECT DISTINCT item_id FROM sale_items WHERE sale_id = ?`,
+    const oldLines = await tx.getAll<{ item_id: string; qty: number }>(
+      `SELECT item_id, qty FROM sale_items WHERE sale_id = ?`,
       [saleId],
     );
     await unpostSource(tx, 'sale', saleId);
@@ -195,18 +195,26 @@ export async function updateSale(
     await createReceiptPayments(tx, saleId, input);
     await recalcSalePaid(tx, saleId);
 
-    const affected = new Set<string>([
-      ...oldItems.map((r) => r.item_id),
-      ...input.lines.map((l) => l.itemId),
-    ]);
-    for (const itemId of affected) await recomputeItemState(tx, itemId);
+    const oldByItem = new Map<string, number>();
+    for (const l of oldLines) {
+      if (l.item_id) oldByItem.set(l.item_id, (oldByItem.get(l.item_id) ?? 0) + l.qty);
+    }
+    const newByItem = new Map<string, number>();
+    for (const l of input.lines) {
+      newByItem.set(l.itemId, (newByItem.get(l.itemId) ?? 0) + l.qty);
+    }
+    for (const itemId of new Set([...oldByItem.keys(), ...newByItem.keys()])) {
+      const delta = (newByItem.get(itemId) ?? 0) - (oldByItem.get(itemId) ?? 0);
+      if (delta > 0) await applySaleToItem(tx, itemId, delta);
+      else if (delta < 0) await restoreSaleToItem(tx, itemId, -delta);
+    }
   });
 }
 
 export async function deleteSale(db: AbstractPowerSyncDatabase, saleId: string): Promise<void> {
   await db.writeTransaction(async (tx) => {
-    const affectedItems = await tx.getAll<{ item_id: string }>(
-      `SELECT DISTINCT item_id FROM sale_items WHERE sale_id = ?`,
+    const saleLines = await tx.getAll<{ item_id: string; qty: number }>(
+      `SELECT item_id, qty FROM sale_items WHERE sale_id = ?`,
       [saleId],
     );
     await unpostSource(tx, 'sale', saleId);
@@ -227,8 +235,10 @@ export async function deleteSale(db: AbstractPowerSyncDatabase, saleId: string):
       }
     }
 
+    for (const { item_id, qty } of saleLines) {
+      if (item_id) await restoreSaleToItem(tx, item_id, qty);
+    }
     await tx.execute(`DELETE FROM sale_items WHERE sale_id = ?`, [saleId]);
     await tx.execute(`DELETE FROM sales WHERE id = ?`, [saleId]);
-    for (const { item_id } of affectedItems) await recomputeItemState(tx, item_id);
   });
 }

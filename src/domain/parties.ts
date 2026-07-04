@@ -71,14 +71,16 @@ export async function createItem(db: AbstractPowerSyncDatabase, input: ItemInput
 
   await db.writeTransaction(async (tx) => {
     await tx.execute(
-      `INSERT INTO items (id, name, category_id, unit, selling_price, qty, avg_cost, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO items (id, name, category_id, unit, selling_price, qty, avg_cost, opening_qty, opening_unit_cost, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.name.trim(),
         input.categoryId,
         input.unit || null,
         input.sellingPrice,
+        openingQty,
+        openingCost,
         openingQty,
         openingCost,
         new Date().toISOString(),
@@ -108,12 +110,14 @@ export async function updateItem(db: AbstractPowerSyncDatabase, id: string, inpu
   await db.writeTransaction(async (tx) => {
     if (canSetOpening && openingQty !== undefined && openingCost !== undefined) {
       await tx.execute(
-        `UPDATE items SET name = ?, category_id = ?, unit = ?, selling_price = ?, qty = ?, avg_cost = ? WHERE id = ?`,
+        `UPDATE items SET name = ?, category_id = ?, unit = ?, selling_price = ?, qty = ?, avg_cost = ?, opening_qty = ?, opening_unit_cost = ? WHERE id = ?`,
         [
           input.name.trim(),
           input.categoryId,
           input.unit || null,
           input.sellingPrice,
+          openingQty,
+          openingCost,
           openingQty,
           openingCost,
           id,

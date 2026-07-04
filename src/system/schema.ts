@@ -30,6 +30,8 @@ const items = new Table(
     selling_price: column.integer, // paise, nullable (blank until set)
     qty: column.real, // current stock, maintained incrementally
     avg_cost: column.integer, // weighted average cost in paise, maintained incrementally
+    opening_qty: column.real, // frozen opening on-hand qty (for replay after purchase edits)
+    opening_unit_cost: column.integer, // frozen opening WAC in paise
     created_at: column.text,
   },
   { indexes: { category: ['category_id'], name: ['name'] } },

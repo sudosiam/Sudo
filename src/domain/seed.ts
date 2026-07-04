@@ -1,5 +1,6 @@
 import type { AbstractPowerSyncDatabase } from '@powersync/web';
 import { SEED_ACCOUNTS } from './accounts';
+import { backfillItemOpeningBaselines } from './inventory';
 
 /** Idempotently seed the Chart of Accounts and default settings. */
 export async function ensureSeeded(db: AbstractPowerSyncDatabase) {
@@ -13,4 +14,18 @@ export async function ensureSeeded(db: AbstractPowerSyncDatabase) {
       );
     }
   });
+
+  // Local schema may predate opening_qty columns — add if missing (no-op when synced from PowerSync).
+  try {
+    await db.execute(`ALTER TABLE items ADD COLUMN opening_qty REAL NOT NULL DEFAULT 0`);
+  } catch {
+    /* column exists */
+  }
+  try {
+    await db.execute(`ALTER TABLE items ADD COLUMN opening_unit_cost INTEGER NOT NULL DEFAULT 0`);
+  } catch {
+    /* column exists */
+  }
+
+  await backfillItemOpeningBaselines(db);
 }

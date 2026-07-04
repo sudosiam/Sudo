@@ -4,6 +4,17 @@ All notable changes to **Sudo — Business Finance** are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.2] — 2026-07-04
+
+### Fixed
+
+- **Sale delete/edit not restoring inventory** — stock is now incrementally restored when a sale is deleted or lines change (mirrors the reduce-on-create path).
+- **Inventory replay ignored opening stock** — `recomputeItemState` (used for purchase delete/edit) now starts from frozen `opening_qty` / `opening_unit_cost` baselines; existing items are backfilled on app load.
+
+### Cloud sync (v0.2.2)
+
+If you use Supabase + PowerSync, run `supabase/migrations/20260704_v0_2_2_inventory_opening.sql` in the SQL Editor.
+
 ## [0.2.1] — 2026-07-04
 
 ### Added
@@ -64,6 +75,7 @@ If you use Supabase + PowerSync, run `supabase/migrations/20260704_v0_2_0.sql` i
 - Double-entry ledger, General Ledger, Trial Balance, Balance Sheet, and operational reports.
 - Dashboard KPIs, Growth charts, global month filter, light/dark theme, JSON export.
 
+[0.2.2]: https://github.com/sudosiam/Sudo/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/sudosiam/Sudo/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/sudosiam/Sudo/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/sudosiam/Sudo/releases/tag/v0.1.0
