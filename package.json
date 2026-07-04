@@ -14,8 +14,6 @@
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",
     "@journeyapps/wa-sqlite": "^1.7.0",
-    "@powersync/react": "^1.10.0",
-    "@powersync/tanstack-react-query": "^0.2.13",
     "@powersync/web": "^1.38.6",
     "@supabase/supabase-js": "^2.110.0",
     "@tailwindcss/vite": "^4.3.2",

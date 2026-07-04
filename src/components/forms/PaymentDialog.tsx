@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { usePowerSync } from '@powersync/react';
+import { useDb } from '../../hooks/useQuery';
 import { useQuery } from '../../hooks/useQuery';
 import { Dialog } from '../ui/dialog';
 import { Button } from '../ui/button';
@@ -29,7 +29,7 @@ export function PaymentDialog({
   onClose: () => void;
   defaultDirection?: 'in' | 'out';
 }) {
-  const db = usePowerSync();
+  const db = useDb();
   const [direction, setDirection] = React.useState<'in' | 'out'>(defaultDirection);
   const [party, setParty] = React.useState<PickedParty | null>(null);
   const [date, setDate] = React.useState(todayISO());

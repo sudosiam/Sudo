@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { usePowerSync } from '@powersync/react';
+import { useDb } from '../../hooks/useQuery';
 import { Plus } from 'lucide-react';
 import { useQuery } from '../../hooks/useQuery';
 import { Dialog } from '../ui/dialog';
@@ -32,7 +32,7 @@ export function ItemDialog({
   };
   defaultName?: string;
 }) {
-  const db = usePowerSync();
+  const db = useDb();
   const [name, setName] = React.useState('');
   const [categoryId, setCategoryId] = React.useState('');
   const [unit, setUnit] = React.useState('');

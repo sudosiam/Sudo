@@ -142,13 +142,11 @@ export function LoginScreen() {
 
           <Button type="submit" className="w-full" disabled={busy}>
             {mode === 'forgot' ? <Mail /> : mode === 'signin' ? <LogIn /> : <UserPlus />}
-            {busy
-              ? 'Please wait…'
-              : mode === 'forgot'
-                ? 'Send reset link'
-                : mode === 'signin'
-                  ? 'Sign in'
-                  : 'Create account'}
+            {mode === 'forgot'
+              ? 'Send reset link'
+              : mode === 'signin'
+                ? 'Sign in'
+                : 'Create account'}
           </Button>
 
           {mode === 'signin' && (

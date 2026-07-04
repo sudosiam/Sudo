@@ -1,7 +1,7 @@
 import { column, Schema, Table } from '@powersync/web';
 
 /**
- * Local SQLite schema, kept in sync with Supabase Postgres by PowerSync.
+ * Local SQLite schema, mirrored in Supabase Postgres when cloud sync is enabled.
  * All money columns are integer paise. Quantities are REAL.
  * `owner_id` lives only in Postgres (default auth.uid()) — not needed locally.
  */
@@ -269,7 +269,7 @@ export type OtherIncomeRecord = Database['other_incomes'];
 export type FixedAssetRecord = Database['fixed_assets'];
 export type JournalLineRecord = Database['journal_lines'];
 
-/** Synced table names, used by the upload connector */
+/** Synced table names — uploaded to Supabase and subscribed via Realtime */
 export const SYNCED_TABLES = [
   'parties',
   'item_categories',

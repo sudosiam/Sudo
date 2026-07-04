@@ -1,7 +1,7 @@
 import type { AbstractPowerSyncDatabase } from '@powersync/web';
 import { ensureSeeded } from './seed';
 import { APP_VERSION } from '../lib/version';
-import { clearUploadQueue } from '../lib/syncQueue';
+import { clearPendingUploads } from '../system/cloudSync';
 import { wipeCloudUserData } from '../lib/cloudReset';
 import { clearDiscardedUploads } from '../lib/syncFailures';
 
@@ -54,7 +54,7 @@ const DELETE_ORDER: BackupTable[] = [
 ];
 
 /** Parent tables first — safe insert order. */
-const INSERT_ORDER: BackupTable[] = [
+export const INSERT_ORDER: BackupTable[] = [
   'parties',
   'item_categories',
   'accounts',
@@ -178,7 +178,7 @@ export async function importBackup(db: AbstractPowerSyncDatabase, raw: unknown) 
 
   await clearAllTables(db);
   // Bulk DELETE FROM triggers one upload op per row — discard; PUTs below are what matter.
-  await clearUploadQueue(db);
+  await clearPendingUploads();
 
   await db.writeTransaction(async (tx) => {
     for (const t of INSERT_ORDER) {

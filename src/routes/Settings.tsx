@@ -1,5 +1,6 @@
 ﻿import * as React from 'react';
-import { usePowerSync, useStatus } from '@powersync/react';
+import { useDb } from '../hooks/useQuery';
+import { useCloudSync } from '../hooks/useCloudSync';
 import {
   Download,
   Upload,
@@ -40,11 +41,8 @@ import { useTheme } from '../stores/ui';
 import { hapticsEnabled, setHapticsEnabled, haptic } from '../lib/haptics';
 import { useAuth } from '../system/SystemProvider';
 import { cloudConfigured } from '../system/supabase';
-import { forceReconnectSync } from '../system/syncLifecycle';
+import { reconnectCloudSync, pushPendingChanges, clearPendingUploads } from '../system/cloudSync';
 import { cn } from '../lib/utils';
-import { formatSyncSchemaError } from '../lib/syncErrors';
-import { clearUploadQueue, formatQueueSize } from '../lib/syncQueue';
-import { useUploadQueue } from '../hooks/useUploadQueue';
 import { useSyncFailures } from '../hooks/useSyncFailures';
 import {
   clearObsoleteSyncErrorsIfQueueEmpty,
@@ -208,8 +206,8 @@ const BUSINESS_FIELDS = [
 ];
 
 export default function Settings() {
-  const db = usePowerSync();
-  const status = useStatus();
+  const db = useDb();
+  const sync = useCloudSync();
   const { session, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
   const importRef = React.useRef<HTMLInputElement>(null);
@@ -231,14 +229,11 @@ export default function Settings() {
   const [mockProgress, setMockProgress] = React.useState<MockDataProgress | null>(null);
   const [clearQueueOpen, setClearQueueOpen] = React.useState(false);
   const [signOutOpen, setSignOutOpen] = React.useState(false);
-  const { stats: queueStats, items: queueItems, refresh: refreshQueue } = useUploadQueue(db, {
-    enabled: cloudConfigured,
-  });
   const { items: syncFailures, clear: clearSyncFailures } = useSyncFailures();
 
   React.useEffect(() => {
-    clearObsoleteSyncErrorsIfQueueEmpty(queueStats.count);
-  }, [queueStats.count, syncFailures.length]);
+    clearObsoleteSyncErrorsIfQueueEmpty(sync.pendingUploads);
+  }, [sync.pendingUploads, syncFailures.length]);
 
   const allFailuresAreObsoleteSeeds =
     syncFailures.length > 0 && syncFailures.every(isObsoleteSeedAccountSyncError);
@@ -368,13 +363,13 @@ export default function Settings() {
   const confirmClearQueue = async () => {
     setBusy('clear-queue');
     try {
-      const cleared = await clearUploadQueue(db);
+      const pending = sync.pendingUploads;
+      await clearPendingUploads();
       haptic('success');
       setClearQueueOpen(false);
-      await refreshQueue();
       flashDataMessage(
         'ok',
-        cleared > 0 ? `Cleared ${cleared} pending upload${cleared === 1 ? '' : 's'}.` : 'Upload queue was already empty.',
+        pending > 0 ? `Cleared ${pending} pending upload${pending === 1 ? '' : 's'}.` : 'Upload queue was already empty.',
       );
     } catch (e) {
       flashDataMessage('err', e instanceof Error ? e.message : 'Could not clear upload queue.');
@@ -401,7 +396,7 @@ export default function Settings() {
       window.location.reload();
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Mock data load failed.';
-      flashDataMessage('err', formatSyncSchemaError(msg));
+      flashDataMessage('err', msg);
     } finally {
       setBusy(null);
       setMockProgress(null);
@@ -411,11 +406,12 @@ export default function Settings() {
   const handleReconnectSync = async () => {
     setBusy('reconnect');
     try {
-      await forceReconnectSync();
+      await reconnectCloudSync();
+      await pushPendingChanges();
       haptic('success');
-      flashDataMessage('ok', 'Reconnecting to PowerSync…');
+      flashDataMessage('ok', 'Reconnecting to Supabase Realtime...');
     } catch (e) {
-      flashDataMessage('err', formatSyncSchemaError(e instanceof Error ? e.message : 'Reconnect failed.'));
+      flashDataMessage('err', e instanceof Error ? e.message : 'Reconnect failed.');
     } finally {
       setBusy(null);
     }
@@ -533,23 +529,17 @@ export default function Settings() {
         ) : (
           <>
             <div className="flex items-center gap-3 border-b px-3.5 py-3.5 text-sm">
-              <Cloud className={cn('size-4 shrink-0', status.connected ? 'text-success' : 'text-muted-foreground')} />
+              <Cloud className={cn('size-4 shrink-0', sync.connected ? 'text-success' : 'text-muted-foreground')} />
               <div className="min-w-0 flex-1">
                 <p className="font-medium">
-                  {status.connecting ? 'Connecting…' : status.connected ? 'Connected' : 'Disconnected'}
+                  {sync.syncing ? 'Syncing...' : sync.connected ? 'Realtime connected' : 'Disconnected'}
                 </p>
                 <p className="truncate text-xs text-muted-foreground">
                   {session?.user?.email}
-                  {status.lastSyncedAt ? ` · ${status.lastSyncedAt.toLocaleTimeString()}` : ''}
+                  {sync.lastSyncedAt ? ` · ${sync.lastSyncedAt.toLocaleTimeString()}` : ''}
                 </p>
-                {(status.dataFlowStatus.downloadError || status.dataFlowStatus.uploadError) && (
-                  <p className="mt-1 whitespace-pre-wrap text-xs text-destructive">
-                    {formatSyncSchemaError(
-                      status.dataFlowStatus.downloadError?.message ??
-                        status.dataFlowStatus.uploadError?.message ??
-                        '',
-                    )}
-                  </p>
+                {sync.error && (
+                  <p className="mt-1 whitespace-pre-wrap text-xs text-destructive">{sync.error}</p>
                 )}
               </div>
               <Button
@@ -558,7 +548,7 @@ export default function Settings() {
                 className="h-8 shrink-0 text-xs"
                 disabled={busy === 'reconnect'}
                 onClick={() => void handleReconnectSync()}
-                title="Reconnect to PowerSync"
+                title="Reconnect to Supabase Realtime"
               >
                 <RefreshCw className={cn('size-3.5', busy === 'reconnect' && 'animate-spin')} />
               </Button>
@@ -568,31 +558,25 @@ export default function Settings() {
               <div className="flex items-start gap-3">
                 <ListOrdered className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium">Upload queue</p>
+                  <p className="font-medium">Pending uploads</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {queueStats.count === 0
-                      ? 'Nothing waiting to upload'
-                      : `${queueStats.count} pending · ${formatQueueSize(queueStats.size)}`}
+                    {sync.pendingUploads === 0
+                      ? 'All changes saved to cloud'
+                      : `${sync.pendingUploads} change${sync.pendingUploads === 1 ? '' : 's'} waiting to upload`}
                   </p>
-                  {queueItems.length > 0 && (
-                    <ul className="mt-2 max-h-36 space-y-1 overflow-y-auto rounded-lg border bg-muted/30 px-2.5 py-2 font-mono text-[10px] text-muted-foreground">
-                      {queueItems.map((item, i) => (
-                        <li key={`${item.table}-${item.id}-${i}`} className="truncate">
-                          <span className="text-foreground/80">{item.op}</span> {item.table}{' '}
-                          <span className="opacity-70">{item.id}</span>
-                        </li>
-                      ))}
-                      {queueStats.count > queueItems.length && (
-                        <li className="pt-0.5 text-[10px] italic opacity-70">
-                          +{queueStats.count - queueItems.length} more…
-                        </li>
-                      )}
-                    </ul>
-                  )}
                 </div>
               </div>
-              {queueStats.count > 0 && (
-                <div className="mt-3 flex justify-end">
+              {sync.pendingUploads > 0 && (
+                <div className="mt-3 flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs"
+                    disabled={busy === 'reconnect'}
+                    onClick={() => void pushPendingChanges()}
+                  >
+                    Upload now
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
@@ -600,7 +584,7 @@ export default function Settings() {
                     disabled={busy === 'clear-queue'}
                     onClick={() => setClearQueueOpen(true)}
                   >
-                    Clear queue
+                    Discard pending
                   </Button>
                 </div>
               )}
@@ -610,7 +594,7 @@ export default function Settings() {
               <div
                 className={cn(
                   'border-b px-3.5 py-3 text-sm',
-                  allFailuresAreObsoleteSeeds && queueStats.count === 0
+                  allFailuresAreObsoleteSeeds && sync.pendingUploads === 0
                     ? 'border-amber-500/20 bg-amber-500/5'
                     : 'border-destructive/20 bg-destructive/5',
                 )}
@@ -619,7 +603,7 @@ export default function Settings() {
                   <AlertTriangle
                     className={cn(
                       'mt-0.5 size-4 shrink-0',
-                      allFailuresAreObsoleteSeeds && queueStats.count === 0
+                      allFailuresAreObsoleteSeeds && sync.pendingUploads === 0
                         ? 'text-amber-600 dark:text-amber-500'
                         : 'text-destructive',
                     )}
@@ -628,17 +612,17 @@ export default function Settings() {
                     <p
                       className={cn(
                         'font-medium',
-                        allFailuresAreObsoleteSeeds && queueStats.count === 0
+                        allFailuresAreObsoleteSeeds && sync.pendingUploads === 0
                           ? 'text-amber-800 dark:text-amber-200'
                           : 'text-destructive',
                       )}
                     >
-                      {allFailuresAreObsoleteSeeds && queueStats.count === 0
+                      {allFailuresAreObsoleteSeeds && sync.pendingUploads === 0
                         ? `${syncFailures.length} past sync warning${syncFailures.length === 1 ? '' : 's'} (resolved)`
                         : `${syncFailures.length} change${syncFailures.length === 1 ? '' : 's'} could not be synced`}
                     </p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      {allFailuresAreObsoleteSeeds && queueStats.count === 0
+                      {allFailuresAreObsoleteSeeds && sync.pendingUploads === 0
                         ? 'Built-in accounts (Cash, Inventory, etc.) stay on this device only — they no longer upload to cloud. Your upload queue is empty; dismiss to clear this notice.'
                         : 'The cloud rejected these permanently (schema mismatch, permission, or invalid data). Local data still has them — fix the underlying issue and re-enter the change.'}
                     </p>
@@ -883,9 +867,9 @@ export default function Settings() {
           Local data on this device will be cleared for privacy on shared devices. Anything
           already synced stays safe in the cloud and will download again next time you sign in.
         </p>
-        {queueStats.count > 0 && (
+        {sync.pendingUploads > 0 && (
           <p className="mt-2 text-sm font-medium text-destructive">
-            {queueStats.count} change{queueStats.count === 1 ? '' : 's'} haven't finished uploading
+            {sync.pendingUploads} change{sync.pendingUploads === 1 ? '' : 's'} haven't finished uploading
             yet — they will be lost if you sign out now.
           </p>
         )}

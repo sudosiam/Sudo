@@ -1,8 +1,8 @@
-# Sudo — Cloud Sync Setup (Supabase + PowerSync)
+# Sudo — Cloud Sync Setup (Supabase Realtime)
 
 The app works fully offline out of the box (data lives in a local SQLite database in your browser).
-To get **login + real-time sync across devices**, connect the two free-tier services below.
-Takes about 15 minutes.
+To get **login + real-time sync across devices**, create a free Supabase project and enable Realtime.
+Takes about 10 minutes.
 
 ---
 
@@ -244,18 +244,13 @@ grant usage on schema public to authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
 alter default privileges in schema public grant select, insert, update, delete on tables to authenticated;
 
--- ===== PowerSync publication =====
-create publication powersync for table
-  public.parties, public.item_categories, public.items, public.accounts,
-  public.journal_entries, public.journal_lines, public.sales, public.sale_items,
-  public.purchases, public.purchase_items, public.payments, public.payment_allocations,
-  public.expenses, public.recurring_expenses, public.other_incomes, public.fixed_assets, public.app_settings;
+-- ===== Realtime =====
+-- After deploy, run supabase/migrations/20260704_realtime_publication.sql
 ```
 
 ### Already set up? Upgrade migrations
 
-Run these in the Supabase **SQL Editor** (in order if you skipped earlier ones), then reconnect
-your PowerSync instance so it picks up the new columns:
+Run these in the Supabase **SQL Editor** (in order if you skipped earlier ones):
 
 | Version | File | Fixes |
 |---------|------|-------|
@@ -263,89 +258,33 @@ your PowerSync instance so it picks up the new columns:
 | v0.2.2 | `supabase/migrations/20260704_v0_2_2_inventory_opening.sql` | `opening_qty`, `opening_unit_cost` on items |
 | v0.2.3 | `supabase/migrations/20260704_factory_reset_rpc.sql` | `factory_reset_user()` — wipe local + cloud in Settings |
 | v0.3.0 | `supabase/migrations/20260704_v0_2_3_doc_number_uniqueness.sql` | Unique `(owner_id, invoice_no)` / `(owner_id, bill_no)` |
+| v0.3.1 | `supabase/migrations/20260704_realtime_publication.sql` | Enable Realtime on all synced tables |
 
-After v0.2.0, add the `recurring_expenses` line to your PowerSync `sync-rules.yaml` (see section 4) and redeploy sync rules.
+## 3. Enable Realtime
 
-## 3. Create a PowerSync Cloud instance (free)
+Run `supabase/migrations/20260704_realtime_publication.sql` in the SQL Editor (adds all business tables to the `supabase_realtime` publication).
 
-1. Sign up at [powersync.journeyapps.com](https://powersync.journeyapps.com).
-2. **Create instance** → name it (e.g. `sudo`).
-3. In the instance settings choose **Connect to Supabase** and follow the wizard —
-   it asks for your Supabase project URL / connection details and sets up the connection.
-   (Docs: [Supabase + PowerSync guide](https://docs.powersync.com/integrations/supabase/guide).)
-4. Enable **"Supabase auth"** in the instance's Client Auth settings (it verifies Supabase JWTs
-   automatically using your Supabase project's JWT secret / URL).
+In **Database → Replication**, confirm the tables are listed under Realtime.
 
-## 4. Sync rules
-
-In the PowerSync dashboard, open `sync-rules.yaml` for your instance, paste this, and deploy:
-
-```yaml
-bucket_definitions:
-  user_data:
-    parameters: select request.user_id() as user_id
-    data:
-      - select * from parties where owner_id = bucket.user_id
-      - select * from item_categories where owner_id = bucket.user_id
-      - select * from items where owner_id = bucket.user_id
-      - select * from accounts where owner_id = bucket.user_id
-      - select * from journal_entries where owner_id = bucket.user_id
-      - select * from journal_lines where owner_id = bucket.user_id
-      - select * from sales where owner_id = bucket.user_id
-      - select * from sale_items where owner_id = bucket.user_id
-      - select * from purchases where owner_id = bucket.user_id
-      - select * from purchase_items where owner_id = bucket.user_id
-      - select * from payments where owner_id = bucket.user_id
-      - select * from payment_allocations where owner_id = bucket.user_id
-      - select * from expenses where owner_id = bucket.user_id
-      - select * from recurring_expenses where owner_id = bucket.user_id
-      - select * from other_incomes where owner_id = bucket.user_id
-      - select * from fixed_assets where owner_id = bucket.user_id
-      - select * from app_settings where owner_id = bucket.user_id
-```
-
-## 5. Point the app at your services
+## 4. Point the app at Supabase
 
 Create `.env.local` in the project root (copy from `.env.example`):
 
 ```bash
 VITE_SUPABASE_URL=https://YOURPROJECT.supabase.co
 VITE_SUPABASE_ANON_KEY=sb_publishable_...   # Settings -> API keys (anon/publishable key)
-VITE_POWERSYNC_URL=https://YOURINSTANCE.powersync.journeyapps.com
 ```
 
-Restart the dev server (`npm run dev`). The app now shows a login screen —
-create your account, sign in, and everything you already entered locally will
-upload and start syncing in real time to every device you sign in on.
+Restart the dev server (`npm run dev`). The app shows a login screen — sign in and local data uploads to Postgres; other devices receive changes via Supabase Realtime.
 
-## Troubleshooting: WebSocket / sync connection failed
+## Troubleshooting
 
-If you see `Failed to create websocket connection to wss://….powersync.journeyapps.com/sync/stream`:
-
-1. **PowerSync Dashboard → Client Auth** (click **Save & Deploy** after changes)
-
-   **Do not paste JWKS JSON** into any field — only a URL (or leave blank for auto-detect).
-   If you saw `Missing property "x"`, your Client Auth config is invalid; fix it first.
-
-   **Option A — auto**
-   - Enable **Supabase Auth**
-   - Leave **JWT Secret** empty (Supabase uses ES256 keys)
-   - Database connection must use your Supabase Postgres URI
-
-   **Option B — manual** (if auto-detect fails)
-   - Disable **Supabase Auth**
-   - JWKS URI: `https://ixprwplpqjqwiyzlzlih.supabase.co/auth/v1/.well-known/jwks.json`
-   - Audience: `authenticated`
-
-2. **PowerSync Dashboard → Database Connections** — healthy + sync rules deployed.
-
-3. **In the app** — Settings → Cloud sync: check **Session token** is green, then reconnect (↻) or sign out/in.
-
-4. **Same Supabase project** — `.env.local` must match the DB PowerSync is connected to.
+- **Realtime disconnected** — Settings → Cloud sync → reconnect (↻), or sign out/in. Check that `20260704_realtime_publication.sql` was applied.
+- **Upload errors** — Settings → Cloud sync shows rejected changes. Common causes: missing migration, RLS, or schema mismatch.
+- **Same Supabase project** — `.env.local` URL/key must match the project where you ran the SQL.
 
 ## Notes
 
 - **Single user**: after creating your account, disable public sign-ups in Supabase Auth settings.
-- **Offline**: the app always writes locally first; PowerSync uploads queued changes whenever
-  you come back online (works in the installed PWA too).
+- **Offline**: writes go to local SQLite first; pending changes upload when back online.
 - **Backups**: Supabase keeps your Postgres data; you can also export from Settings inside the app.

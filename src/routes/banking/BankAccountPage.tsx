@@ -1,6 +1,6 @@
 ﻿import * as React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { usePowerSync } from '@powersync/react';
+import { useDb } from '../../hooks/useQuery';
 import { Pencil, Trash2, ArrowDownLeft, ArrowUpRight, ArrowDownToLine, ArrowUpFromLine, Undo2 } from 'lucide-react';
 import { useQuery, useDateClause } from '../../hooks/useQuery';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -29,7 +29,7 @@ interface TxRow {
 
 export default function BankAccountPage() {
   const { id } = useParams<{ id: string }>();
-  const db = usePowerSync();
+  const db = useDb();
   const navigate = useNavigate();
   const [renameOpen, setRenameOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);

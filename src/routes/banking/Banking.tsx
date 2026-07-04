@@ -1,5 +1,5 @@
 ﻿import * as React from 'react';
-import { usePowerSync } from '@powersync/react';
+import { useDb } from '../../hooks/useQuery';
 import { Landmark, Wallet, ArrowLeftRight, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
 import { useQuery } from '../../hooks/useQuery';
 import { useFabDialog } from '../../hooks/useFabDialog';
@@ -27,7 +27,7 @@ interface AccountRow {
 }
 
 export default function Banking() {
-  const db = usePowerSync();
+  const db = useDb();
   const { open: addOpen, openDialog: openAddAccountDialog, closeDialog: closeAddAccountDialog, requested: newRequested } = useFabDialog();
   const [showAllAccounts, setShowAllAccounts] = React.useState(false);
   const [transferOpen, setTransferOpen] = React.useState(false);

@@ -1,6 +1,6 @@
 ﻿import * as React from 'react';
 import { useParams } from 'react-router-dom';
-import { usePowerSync } from '@powersync/react';
+import { useDb } from '../../hooks/useQuery';
 import { DocForm, type DraftShape } from '../../components/doc/DocForm';
 import { createPurchase, updatePurchase } from '../../domain/purchases';
 import { paiseToInput } from '../../lib/money';
@@ -13,7 +13,7 @@ function resolveEditId(id: string | undefined): string | undefined {
 export default function PurchaseForm() {
   const { id } = useParams<{ id: string }>();
   const editId = resolveEditId(id);
-  const db = usePowerSync();
+  const db = useDb();
 
   const onSubmit = React.useCallback(
     async (input: PurchaseInput) => {

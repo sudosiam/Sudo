@@ -1,8 +1,9 @@
 import * as React from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, ChevronLeft, Moon, Sun, MonitorSmartphone, Wifi, WifiOff, RefreshCw, AlertCircle } from 'lucide-react';
-import { usePowerSync, useStatus } from '@powersync/react';
 import { useAutoBackup } from '../../hooks/useAutoBackup';
+import { useDb } from '../../hooks/useQuery';
+import { useCloudSync } from '../../hooks/useCloudSync';
 import { NAV_ITEMS } from './nav';
 import { MonthFilter, pathnameUsesMonthFilter } from './MonthFilter';
 import { CreateShortcutsFab } from './CreateShortcutsFab';
@@ -12,8 +13,6 @@ import { useTheme } from '../../stores/ui';
 import { cn } from '../../lib/utils';
 import { haptic } from '../../lib/haptics';
 import { cloudConfigured } from '../../system/supabase';
-import { formatSyncSchemaError } from '../../lib/syncErrors';
-import { useUploadQueue } from '../../hooks/useUploadQueue';
 import { useSyncFailures } from '../../hooks/useSyncFailures';
 import { ToastHost } from '../ui/toast';
 
@@ -36,35 +35,24 @@ function ThemeToggle() {
 }
 
 function SyncIndicator() {
-  const db = usePowerSync();
-  const status = useStatus();
+  const sync = useCloudSync();
   const navigate = useNavigate();
-  const { stats } = useUploadQueue(db, {
-    enabled: cloudConfigured && status.connected,
-    pollMs: 2000,
-    previewLimit: 0,
-  });
   const { items: failures } = useSyncFailures();
-
-  const online = status.connected;
-  const uploadError = status.dataFlowStatus.uploadError;
-  const downloadError = status.dataFlowStatus.downloadError;
-  const syncError = uploadError ?? downloadError;
-  const active = status.dataFlowStatus.downloading || status.dataFlowStatus.uploading;
-  const pending = stats.count;
-  const hasFailures = failures.length > 0;
 
   if (!cloudConfigured) return null;
 
-  const syncing = active || (pending > 0 && !syncError);
-  const errorText = syncError ? formatSyncSchemaError(syncError.message) : null;
+  const online = navigator.onLine && sync.connected;
+  const pending = sync.pendingUploads;
+  const hasFailures = failures.length > 0;
+  const syncError = sync.error;
+  const syncing = sync.syncing || (pending > 0 && !syncError);
 
   let label = 'Offline';
   if (online) {
     if (hasFailures) label = `${failures.length} not synced`;
     else if (syncError) label = 'Sync error';
     else if (syncing) label = pending > 0 ? `Syncing (${pending})` : 'Syncing';
-    else label = 'Synced';
+    else label = 'Live';
   }
 
   const isError = !!syncError || hasFailures;
@@ -84,7 +72,7 @@ function SyncIndicator() {
       title={
         hasFailures
           ? `${failures.length} change${failures.length === 1 ? '' : 's'} could not be synced to the cloud — tap for details.`
-          : (errorText ?? (online ? 'Cloud sync status' : 'Offline — changes saved locally'))
+          : (syncError ?? (online ? 'Supabase Realtime connected' : 'Offline — changes saved locally'))
       }
     >
       {isError ? (
@@ -177,7 +165,7 @@ function AppHeaderLeading({ onOpenMenu }: { onOpenMenu: () => void }) {
 }
 
 export function AppShell() {
-  const db = usePowerSync();
+  const db = useDb();
   useAutoBackup(db);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const location = useLocation();

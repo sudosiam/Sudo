@@ -1,7 +1,6 @@
 import { Suspense, lazy, type ComponentType, type LazyExoticComponent } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AppShell } from './components/layout/AppShell';
-import { PageSpinner } from './components/ui/misc';
 import { SystemProvider } from './system/SystemProvider';
 
 const Dashboard = lazy(() => import('./routes/Dashboard'));
@@ -44,7 +43,7 @@ export default function App() {
             <Route
               index
               element={
-                <Suspense fallback={<PageSpinner />}>
+                <Suspense fallback={null}>
                   <Dashboard />
                 </Suspense>
               }
@@ -54,7 +53,7 @@ export default function App() {
                 key={path}
                 path={path}
                 element={
-                  <Suspense fallback={<PageSpinner />}>
+                  <Suspense fallback={null}>
                     <Component />
                   </Suspense>
                 }

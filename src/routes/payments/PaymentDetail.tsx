@@ -1,6 +1,6 @@
 ﻿import * as React from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { usePowerSync } from '@powersync/react';
+import { useDb } from '../../hooks/useQuery';
 import { Trash2, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { useQuery } from '../../hooks/useQuery';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -35,7 +35,7 @@ interface AllocRow {
 
 export default function PaymentDetail() {
   const { id } = useParams<{ id: string }>();
-  const db = usePowerSync();
+  const db = useDb();
   const navigate = useNavigate();
   const [deleteOpen, setDeleteOpen] = React.useState(false);
 

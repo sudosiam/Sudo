@@ -1,5 +1,5 @@
 ﻿import * as React from 'react';
-import { usePowerSync } from '@powersync/react';
+import { useDb } from '../hooks/useQuery';
 import { Plus, Pencil, Building2, Trash2 } from 'lucide-react';
 import { useQuery } from '../hooks/useQuery';
 import { useFabDialog } from '../hooks/useFabDialog';
@@ -28,7 +28,7 @@ interface Row {
 }
 
 export default function FixedAssets() {
-  const db = usePowerSync();
+  const db = useDb();
   const { open: addOpen, openDialog: openAddDialog, closeDialog: closeAddDialog } = useFabDialog();
   const [deleting, setDeleting] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState<Row | null>(null);

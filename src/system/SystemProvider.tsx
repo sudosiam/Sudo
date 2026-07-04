@@ -1,21 +1,17 @@
 import * as React from 'react';
-import { PowerSyncContext } from '@powersync/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Session } from '@supabase/supabase-js';
 import { db } from './db';
 import { supabase, cloudConfigured } from './supabase';
 import { ensureSeeded } from '../domain/seed';
-import { connectSync, reconnectSyncIfNeeded } from './syncLifecycle';
+import { startCloudSync, stopCloudSync, reconnectCloudSync } from './cloudSync';
 import { clearLocalUserData } from '../lib/localWipe';
 import { LoginScreen } from './LoginScreen';
-import { PageSpinner } from '../components/ui/misc';
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Data is local — no need for aggressive refetching; watch queries
-      // invalidate automatically when underlying tables change.
-      staleTime: 60_000,
+      staleTime: 30_000,
       retry: 1,
     },
   },
@@ -41,7 +37,6 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
   const sessionRef = React.useRef<Session | null>(null);
   const prevUserIdRef = React.useRef<string | null>(null);
 
-  // Initialize local DB + seed chart of accounts
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -70,7 +65,6 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Auth state + PowerSync connection lifecycle
   React.useEffect(() => {
     if (!supabase) return;
     supabase.auth
@@ -96,7 +90,6 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
     sessionRef.current = session;
   }, [session]);
 
-  // Connect / wipe when the signed-in user changes (not on every token refresh).
   const userId = session?.user?.id ?? null;
   React.useEffect(() => {
     if (!cloudConfigured || !ready) return;
@@ -106,8 +99,8 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
 
     let cancelled = false;
     (async () => {
-      // Another account signed in, or the session ended — wipe so the next user
-      // never sees this device's cached business data.
+      stopCloudSync();
+
       if (prev && prev !== userId) {
         try {
           await clearLocalUserData(queryClient);
@@ -125,7 +118,7 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (userId) {
-        connectSync().catch((e) => console.error('PowerSync connect failed', e));
+        startCloudSync(userId).catch((e) => console.error('Cloud sync start failed', e));
       }
       prevUserIdRef.current = userId;
     })();
@@ -135,11 +128,10 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
     };
   }, [userId, ready]);
 
-  // Mobile PWAs lose WebSocket sync when backgrounded — reconnect on wake / online.
   React.useEffect(() => {
     if (!cloudConfigured || !ready) return;
 
-    const onWake = () => reconnectSyncIfNeeded(sessionRef.current);
+    const onWake = () => reconnectCloudSync().catch((e) => console.error('Cloud reconnect failed', e));
 
     window.addEventListener('online', onWake);
     document.addEventListener('visibilitychange', onWake);
@@ -151,8 +143,7 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = React.useCallback(async () => {
     if (!supabase) return;
-    // Wipe local SQLite + upload queue + query cache first so a different user
-    // on this device never sees (or accidentally re-uploads) this account's data.
+    stopCloudSync();
     try {
       await clearLocalUserData(queryClient);
     } catch (e) {
@@ -174,21 +165,13 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!ready || authLoading) {
-    return (
-      <div className="flex h-dvh items-center justify-center">
-        <PageSpinner />
-      </div>
-    );
-  }
+  if (!ready || authLoading) return null;
 
   return (
-    <PowerSyncContext.Provider value={db}>
-      <QueryClientProvider client={queryClient}>
-        <AuthContext.Provider value={{ session, signOut }}>
-          {cloudConfigured && !session ? <LoginScreen /> : children}
-        </AuthContext.Provider>
-      </QueryClientProvider>
-    </PowerSyncContext.Provider>
+    <QueryClientProvider client={queryClient}>
+      <AuthContext.Provider value={{ session, signOut }}>
+        {cloudConfigured && !session ? <LoginScreen /> : children}
+      </AuthContext.Provider>
+    </QueryClientProvider>
   );
 }

@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Search, Plus, X, Phone, MapPin } from 'lucide-react';
-import { usePowerSync } from '@powersync/react';
+import { useDb } from '../../hooks/useQuery';
 import { useQuery } from '../../hooks/useQuery';
 import { Input } from '../ui/input';
 import { Avatar } from '../ui/misc';
@@ -27,7 +27,7 @@ export function PartyPicker({
   onChange: (p: PickedParty | null) => void;
   partyKind: 'customer' | 'vendor';
 }) {
-  const db = usePowerSync();
+  const db = useDb();
   const [text, setText] = React.useState('');
   const [open, setOpen] = React.useState(false);
   const [createOpen, setCreateOpen] = React.useState(false);

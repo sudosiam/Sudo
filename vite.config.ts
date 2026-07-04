@@ -59,8 +59,7 @@ export default defineConfig({
     exclude: ['@journeyapps/wa-sqlite', '@powersync/web'],
   },
   server: {
-    // Required for mobile testing on LAN — PowerSync needs a secure context
-    // (navigator.locks / WASM workers are blocked on http://192.168.x.x).
+    // Required for mobile testing on LAN — WASM workers need a secure context
     host: true,
     watch: {
       // Brand assets are often locked by image viewers on Windows (EBUSY).

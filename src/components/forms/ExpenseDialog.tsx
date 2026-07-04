@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { usePowerSync } from '@powersync/react';
+import { useDb } from '../../hooks/useQuery';
 import { Plus } from 'lucide-react';
 import { useQuery } from '../../hooks/useQuery';
 import { Button } from '../ui/button';
@@ -32,7 +32,7 @@ export function ExpenseDialog({
   onClose: () => void;
   expense?: ExpenseFormValues;
 }) {
-  const db = usePowerSync();
+  const db = useDb();
   const editing = !!expense?.id;
 
   const [categoryId, setCategoryId] = React.useState('');

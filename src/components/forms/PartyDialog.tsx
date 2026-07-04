@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { usePowerSync } from '@powersync/react';
+import { useDb } from '../../hooks/useQuery';
 import { Dialog } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -21,7 +21,7 @@ export interface PartyDialogProps {
 }
 
 export function PartyDialog({ open, onClose, onSaved, party, defaultType, defaultName }: PartyDialogProps) {
-  const db = usePowerSync();
+  const db = useDb();
   const [form, setForm] = React.useState<PartyInput>({
     name: '',
     type: 'customer',

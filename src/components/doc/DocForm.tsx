@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { usePowerSync } from '@powersync/react';
+import { useDb } from '../../hooks/useQuery';
 import { Trash2, Plus } from 'lucide-react';
 import { useQuery } from '../../hooks/useQuery';
 import { PageHeader } from '../layout/PageHeader';
@@ -56,7 +56,7 @@ let keyCounter = 0;
 const nextKey = () => `k${++keyCounter}`;
 
 export function DocForm({ mode, editId, onSubmit, loadExisting }: DocFormProps) {
-  const db = usePowerSync();
+  const db = useDb();
   const navigate = useNavigate();
   const isSale = mode === 'sale';
 

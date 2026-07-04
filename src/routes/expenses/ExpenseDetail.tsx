@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { usePowerSync } from '@powersync/react';
+import { useDb } from '../../hooks/useQuery';
 import { Pencil, Trash2, ReceiptText } from 'lucide-react';
 import { useQuery } from '../../hooks/useQuery';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -35,7 +35,7 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 
 export default function ExpenseDetail() {
   const { id } = useParams<{ id: string }>();
-  const db = usePowerSync();
+  const db = useDb();
   const navigate = useNavigate();
   const [editOpen, setEditOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);

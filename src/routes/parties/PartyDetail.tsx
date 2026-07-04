@@ -1,6 +1,6 @@
 ﻿import * as React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { usePowerSync } from '@powersync/react';
+import { useDb } from '../../hooks/useQuery';
 import { Pencil, Trash2, Phone, MapPin, StickyNote, FileDown } from 'lucide-react';
 import { useQuery } from '../../hooks/useQuery';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -37,7 +37,7 @@ interface LedgerRow {
 
 export default function PartyDetail() {
   const { id } = useParams<{ id: string }>();
-  const db = usePowerSync();
+  const db = useDb();
   const navigate = useNavigate();
   const [tab, setTab] = React.useState<Tab>('sales');
   const [editOpen, setEditOpen] = React.useState(false);

@@ -1,5 +1,5 @@
 ﻿import * as React from 'react';
-import { usePowerSync } from '@powersync/react';
+import { useDb } from '../hooks/useQuery';
 import { Plus, PiggyBank, Trash2 } from 'lucide-react';
 import { useQuery, useDateClause } from '../hooks/useQuery';
 import { useFabDialog } from '../hooks/useFabDialog';
@@ -30,7 +30,7 @@ interface Row {
 const PAGE = 100;
 
 export default function OtherIncome() {
-  const db = usePowerSync();
+  const db = useDb();
   const { open: addOpen, openDialog: openAddDialog, closeDialog: closeAddDialog } = useFabDialog();
   const [deleting, setDeleting] = React.useState<string | null>(null);
   const { clause, params } = useDateClause('oi.date');

@@ -1,5 +1,5 @@
 ﻿import * as React from 'react';
-import { usePowerSync } from '@powersync/react';
+import { useDb } from '../hooks/useQuery';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, ReceiptText, Repeat } from 'lucide-react';
 import { useQuery, useDateClause } from '../hooks/useQuery';
@@ -43,7 +43,7 @@ interface RecurringRow {
 }
 
 export default function Expenses() {
-  const db = usePowerSync();
+  const db = useDb();
   const [searchParams, setSearchParams] = useSearchParams();
   const { open: addOpen, openDialog: openAddDialog, closeDialog: closeAddDialog, requested: newRequested } = useFabDialog();
   const [recurringOpen, setRecurringOpen] = React.useState(false);

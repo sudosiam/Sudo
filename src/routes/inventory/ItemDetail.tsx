@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { usePowerSync } from '@powersync/react';
+import { useDb } from '../../hooks/useQuery';
 import { Pencil, Trash2, Boxes } from 'lucide-react';
 import { useQuery } from '../../hooks/useQuery';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -44,7 +44,7 @@ function DetailRow({ label, value, tone }: { label: string; value: React.ReactNo
 
 export default function ItemDetail() {
   const { id } = useParams<{ id: string }>();
-  const db = usePowerSync();
+  const db = useDb();
   const navigate = useNavigate();
   const [editOpen, setEditOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
