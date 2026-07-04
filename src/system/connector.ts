@@ -7,6 +7,7 @@ import {
 import { supabase, powersyncUrl } from './supabase';
 import { decodeAccessToken } from '../lib/syncDiagnostics';
 import { recordDiscardedUpload } from '../lib/syncFailures';
+import { SEED_ACCOUNT_IDS } from '../domain/accounts';
 
 /**
  * Postgres / PostgREST error codes that will never resolve by retrying — the local
@@ -20,10 +21,12 @@ const FATAL_RESPONSE_CODES = [
 ];
 
 /** Seeded chart-of-accounts rows use global IDs (acc-cash, …) — local-only for sync. */
-function isSystemAccountOp(op: CrudEntry): boolean {
+function shouldSkipAccountUpload(op: CrudEntry): boolean {
   if (op.table !== 'accounts') return false;
+  // Deterministic seed IDs — never upload (global PK collides across auth users).
+  if (SEED_ACCOUNT_IDS.has(op.id)) return true;
   const v = op.opData?.is_system;
-  return v === 1 || v === '1';
+  return v === 1 || v === '1' || v === true || Number(v) === 1;
 }
 
 function accountPutPayload(op: CrudEntry, ownerId: string) {
@@ -128,12 +131,12 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
         for (const op of transaction.crud) {
           lastOp = op;
           const table = supabase.from(op.table);
-          let result;
+          let result: { error: { message?: string; code?: string } | null } | null = null;
           switch (op.op) {
             case UpdateType.PUT:
               // System accounts are seeded locally per device/user; uploading them
               // collides with another user's row (global PK) and fails RLS.
-              if (isSystemAccountOp(op)) continue;
+              if (shouldSkipAccountUpload(op)) continue;
               if (op.table === 'accounts') {
                 result = await supabase
                   .from('accounts')
@@ -153,7 +156,7 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
               result = await table.delete().eq('id', op.id).eq('owner_id', ownerId);
               break;
           }
-          if (result.error) {
+          if (result?.error) {
             (result.error as Error & { code?: string }).message ||= 'Supabase upload error';
             throw result.error;
           }

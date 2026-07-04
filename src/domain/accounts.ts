@@ -44,6 +44,9 @@ export const SEED_ACCOUNTS: SeedAccount[] = [
   { id: 'acc-exp-misc', code: '6900', name: 'Miscellaneous', type: 'expense', subtype: 'opex', is_system: 1 },
 ];
 
+/** IDs of built-in accounts — local-only; must not upsert to shared Postgres (global PK). */
+export const SEED_ACCOUNT_IDS = new Set(SEED_ACCOUNTS.map((a) => a.id));
+
 /**
  * Normal balance sign per account type: debit-normal types show positive
  * balances when SUM(amount) > 0 (amount is +debit / -credit).

@@ -59,7 +59,7 @@ export function formatSyncSchemaError(message: string): string {
     message.includes('row-level security policy') &&
     (message.includes('accounts') || message.includes('"accounts"'))
   ) {
-    return `${message}\n\nThe built-in chart of accounts (Cash, Inventory, etc.) is seeded locally and should not sync to a shared Supabase project used by multiple login accounts. Custom bank/expense accounts should sync after updating the app. If errors persist, sign out, sign back in, clear sync errors in Settings, then re-save the account.`;
+    return `${message}\n\nWhy: built-in accounts (Cash, Inventory, Rent, etc.) use fixed IDs like acc-cash. Your Supabase project already has those rows owned by another login — Postgres blocks the upload. The app now skips syncing those rows; only custom bank/expense accounts sync. Clear sync errors in Settings, hard-refresh the app, and re-save any custom accounts you added. Use one login email per Supabase project.`;
   }
   return message;
 }
