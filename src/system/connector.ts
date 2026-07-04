@@ -5,6 +5,8 @@ import {
   type PowerSyncBackendConnector,
 } from '@powersync/web';
 import { supabase, powersyncUrl } from './supabase';
+import { decodeAccessToken } from '../lib/syncDiagnostics';
+import { recordDiscardedUpload } from '../lib/syncFailures';
 
 /**
  * Postgres / PostgREST error codes that will never resolve by retrying — the local
@@ -47,12 +49,38 @@ async function getAccessToken(): Promise<string | null> {
   return session?.access_token ?? null;
 }
 
+function assertSyncToken(token: string): void {
+  const { payload } = decodeAccessToken(token);
+  if (!payload) throw new Error('Invalid session token — sign out and sign back in.');
+
+  if (payload.role !== 'authenticated') {
+    throw new Error(
+      'PowerSync requires a signed-in user (JWT role must be "authenticated", not anon).',
+    );
+  }
+
+  const aud = payload.aud;
+  const audiences = Array.isArray(aud) ? aud.map(String) : aud != null ? [String(aud)] : [];
+  if (!audiences.includes('authenticated')) {
+    throw new Error(
+      `JWT audience ${JSON.stringify(aud)} is not accepted — set audience "authenticated" in PowerSync Client Auth.`,
+    );
+  }
+
+  const exp = typeof payload.exp === 'number' ? payload.exp : null;
+  if (exp != null && exp <= Math.floor(Date.now() / 1000)) {
+    throw new Error('Session token expired — sign out and sign back in.');
+  }
+}
+
 export class SupabaseConnector implements PowerSyncBackendConnector {
   async fetchCredentials() {
     if (!supabase || !powersyncUrl) return null;
 
     const token = await getAccessToken();
     if (!token) return null;
+
+    assertSyncToken(token);
 
     return {
       endpoint: powersyncUrl.replace(/\/$/, ''),
@@ -71,43 +99,59 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
     }
 
     const ownerId = session.user.id;
-    const transaction = await database.getNextCrudTransaction();
-    if (!transaction) return;
+    const maxOpsPerCall = 200;
+    let uploadedOps = 0;
 
-    let lastOp: CrudEntry | null = null;
-    try {
-      for (const op of transaction.crud) {
-        lastOp = op;
-        const table = supabase.from(op.table);
-        let result;
-        switch (op.op) {
-          case UpdateType.PUT:
-            result = await table.upsert({
-              ...(op.opData ?? {}),
-              id: op.id,
-              owner_id: ownerId,
-            });
-            break;
-          case UpdateType.PATCH:
-            result = await table.update(op.opData ?? {}).eq('id', op.id).eq('owner_id', ownerId);
-            break;
-          case UpdateType.DELETE:
-            result = await table.delete().eq('id', op.id).eq('owner_id', ownerId);
-            break;
+    for (;;) {
+      const transaction = await database.getNextCrudTransaction();
+      if (!transaction) return;
+
+      let lastOp: CrudEntry | null = null;
+      try {
+        for (const op of transaction.crud) {
+          lastOp = op;
+          const table = supabase.from(op.table);
+          let result;
+          switch (op.op) {
+            case UpdateType.PUT:
+              result = await table.upsert({
+                ...(op.opData ?? {}),
+                id: op.id,
+                owner_id: ownerId,
+              });
+              break;
+            case UpdateType.PATCH:
+              result = await table.update(op.opData ?? {}).eq('id', op.id).eq('owner_id', ownerId);
+              break;
+            case UpdateType.DELETE:
+              result = await table.delete().eq('id', op.id).eq('owner_id', ownerId);
+              break;
+          }
+          if (result.error) {
+            (result.error as Error & { code?: string }).message ||= 'Supabase upload error';
+            throw result.error;
+          }
         }
-        if (result.error) {
-          (result.error as Error & { code?: string }).message ||= 'Supabase upload error';
-          throw result.error;
-        }
-      }
-      await transaction.complete();
-    } catch (ex) {
-      if (isFatalUploadError(ex)) {
-        console.error('Discarding non-retryable upload operation', lastOp, ex);
         await transaction.complete();
-      } else {
-        // Retryable (network etc.) — PowerSync will retry the queue.
-        throw ex;
+        uploadedOps += transaction.crud.length;
+        if (uploadedOps >= maxOpsPerCall) return;
+      } catch (ex) {
+        if (isFatalUploadError(ex)) {
+          console.error('Discarding non-retryable upload operation', lastOp, ex);
+          const err = ex as { message?: string };
+          recordDiscardedUpload({
+            id: lastOp?.id ?? `unknown-${Date.now()}`,
+            table: lastOp?.table ?? 'unknown',
+            op: lastOp ? String(lastOp.op) : '?',
+            message: err?.message ?? 'Upload rejected by server',
+          });
+          await transaction.complete();
+          uploadedOps += transaction.crud.length;
+          if (uploadedOps >= maxOpsPerCall) return;
+        } else {
+          // Retryable (network etc.) — PowerSync will retry the queue.
+          throw ex;
+        }
       }
     }
   }

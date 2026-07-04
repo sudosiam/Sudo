@@ -220,11 +220,15 @@
   .app-table-wrap {
     width: 100%;
     max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
   }
 
   .app-table {
     width: 100%;
-    min-width: 0;
+    min-width: 30rem;
     table-layout: fixed;
     font-size: 0.875rem;
   }

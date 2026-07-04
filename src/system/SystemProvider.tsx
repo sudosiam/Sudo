@@ -5,7 +5,8 @@ import type { Session } from '@supabase/supabase-js';
 import { db } from './db';
 import { supabase, cloudConfigured } from './supabase';
 import { ensureSeeded } from '../domain/seed';
-import { connectSync, disconnectSync, reconnectSyncIfNeeded } from './syncLifecycle';
+import { connectSync, reconnectSyncIfNeeded } from './syncLifecycle';
+import { clearLocalUserData } from '../lib/localWipe';
 import { LoginScreen } from './LoginScreen';
 import { PageSpinner } from '../components/ui/misc';
 
@@ -38,6 +39,7 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = React.useState<Session | null>(null);
   const [authLoading, setAuthLoading] = React.useState(cloudConfigured);
   const sessionRef = React.useRef<Session | null>(null);
+  const prevUserIdRef = React.useRef<string | null>(null);
 
   // Initialize local DB + seed chart of accounts
   React.useEffect(() => {
@@ -94,15 +96,43 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
     sessionRef.current = session;
   }, [session]);
 
-  // Connect / disconnect when the signed-in user changes (not on every token refresh).
+  // Connect / wipe when the signed-in user changes (not on every token refresh).
   const userId = session?.user?.id ?? null;
   React.useEffect(() => {
     if (!cloudConfigured || !ready) return;
-    if (userId) {
-      connectSync().catch((e) => console.error('PowerSync connect failed', e));
-    } else {
-      disconnectSync().catch(console.error);
-    }
+
+    const prev = prevUserIdRef.current;
+    if (prev === userId) return;
+
+    let cancelled = false;
+    (async () => {
+      // Another account signed in, or the session ended — wipe so the next user
+      // never sees this device's cached business data.
+      if (prev && prev !== userId) {
+        try {
+          await clearLocalUserData(queryClient);
+        } catch (e) {
+          console.error('Failed to clear local data on session change', e);
+        }
+        if (cancelled) return;
+      } else if (!userId && prev) {
+        try {
+          await clearLocalUserData(queryClient);
+        } catch (e) {
+          console.error('Failed to clear local data on sign-out', e);
+        }
+        if (cancelled) return;
+      }
+
+      if (userId) {
+        connectSync().catch((e) => console.error('PowerSync connect failed', e));
+      }
+      prevUserIdRef.current = userId;
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [userId, ready]);
 
   // Mobile PWAs lose WebSocket sync when backgrounded — reconnect on wake / online.
@@ -120,7 +150,17 @@ export function SystemProvider({ children }: { children: React.ReactNode }) {
   }, [ready]);
 
   const signOut = React.useCallback(async () => {
-    if (supabase) await supabase.auth.signOut();
+    if (!supabase) return;
+    // Wipe local SQLite + upload queue + query cache first so a different user
+    // on this device never sees (or accidentally re-uploads) this account's data.
+    try {
+      await clearLocalUserData(queryClient);
+    } catch (e) {
+      console.error('Failed to clear local data on sign out', e);
+      throw e;
+    }
+    prevUserIdRef.current = null;
+    await supabase.auth.signOut();
   }, []);
 
   if (initError) {

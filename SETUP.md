@@ -261,6 +261,7 @@ your PowerSync instance so it picks up the new columns:
 |---------|------|-------|
 | v0.2.0 | `supabase/migrations/20260704_v0_2_0.sql` | `include_in_liquid`, `recurring_expenses` |
 | v0.2.2 | `supabase/migrations/20260704_v0_2_2_inventory_opening.sql` | `opening_qty`, `opening_unit_cost` on items |
+| v0.2.3 | `supabase/migrations/20260704_factory_reset_rpc.sql` | `factory_reset_user()` — wipe local + cloud in Settings |
 
 After v0.2.0, add the `recurring_expenses` line to your PowerSync `sync-rules.yaml` (see section 4) and redeploy sync rules.
 
@@ -320,19 +321,26 @@ upload and start syncing in real time to every device you sign in on.
 
 If you see `Failed to create websocket connection to wss://….powersync.journeyapps.com/sync/stream`:
 
-1. **PowerSync Dashboard → Client Auth**
+1. **PowerSync Dashboard → Client Auth** (click **Save & Deploy** after changes)
+
+   **Do not paste JWKS JSON** into any field — only a URL (or leave blank for auto-detect).
+   If you saw `Missing property "x"`, your Client Auth config is invalid; fix it first.
+
+   **Option A — auto**
    - Enable **Supabase Auth**
-   - If Supabase uses **new JWT signing keys** (ES256 — check Supabase → Project Settings → JWT): leave **JWT Secret empty**
-   - If auto-detection fails, disable Supabase Auth checkbox and set manually:
-     - JWKS: `https://YOURPROJECT.supabase.co/auth/v1/.well-known/jwks.json`
-     - Audience: `authenticated`
-   - Click **Save & Deploy**
+   - Leave **JWT Secret** empty (Supabase uses ES256 keys)
+   - Database connection must use your Supabase Postgres URI
 
-2. **PowerSync Dashboard → Database Connections** — confirm the Supabase connection is healthy and sync rules are deployed.
+   **Option B — manual** (if auto-detect fails)
+   - Disable **Supabase Auth**
+   - JWKS URI: `https://ixprwplpqjqwiyzlzlih.supabase.co/auth/v1/.well-known/jwks.json`
+   - Audience: `authenticated`
 
-3. **In the app** — Settings → Cloud sync → tap the **reconnect** button, or sign out and sign back in (clears stale JWTs).
+2. **PowerSync Dashboard → Database Connections** — healthy + sync rules deployed.
 
-4. **Same Supabase project** — `.env.local` must point at the same Supabase project PowerSync is connected to.
+3. **In the app** — Settings → Cloud sync: check **Session token** is green, then reconnect (↻) or sign out/in.
+
+4. **Same Supabase project** — `.env.local` must match the DB PowerSync is connected to.
 
 ## Notes
 

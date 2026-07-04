@@ -8,7 +8,8 @@ import { ListRow, ListCard } from '../../components/ListRow';
 import { buttonVariants } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { PayStatusBadge } from '../../components/ui/badge';
-import { EmptyState, PageSpinner } from '../../components/ui/misc';
+import { EmptyState, ListCardSkeleton } from '../../components/ui/misc';
+import { LoadMoreButton } from '../../components/ui/load-more';
 import { formatPaise, formatPaiseRounded } from '../../lib/money';
 import { formatISODateShort } from '../../lib/dates';
 
@@ -78,7 +79,7 @@ export default function SalesList() {
       </div>
 
       {isLoading ? (
-        <PageSpinner />
+        <ListCardSkeleton />
       ) : !rows?.length ? (
         <EmptyState
           icon={<ShoppingCart />}
@@ -112,12 +113,7 @@ export default function SalesList() {
       )}
 
       {rows && rows.length >= limit && (
-        <button
-          className="mt-3 w-full rounded-lg border bg-card py-2 text-xs font-medium text-muted-foreground hover:bg-accent"
-          onClick={() => setLimit((l) => l + PAGE)}
-        >
-          Load more
-        </button>
+        <LoadMoreButton onClick={() => setLimit((l) => l + PAGE)} />
       )}
     </div>
   );

@@ -1,11 +1,15 @@
 ﻿import * as React from 'react';
+import { Link } from 'react-router-dom';
 import { BookOpenText } from 'lucide-react';
 import { useQuery, useDateClause } from '../hooks/useQuery';
 import { ListRow, ListCard } from '../components/ListRow';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageKpi, PageKpis } from '../components/layout/PageKpis';
 import { AccountPicker } from '../components/forms/AccountPicker';
-import { EmptyState, PageSpinner } from '../components/ui/misc';
+import { EmptyState, ListCardSkeleton } from '../components/ui/misc';
+import { LoadMoreButton } from '../components/ui/load-more';
+import { buttonVariants } from '../components/ui/button';
+import { SignedAmount } from '../lib/amountDisplay';
 import { formatPaise } from '../lib/money';
 import { formatISODateShort } from '../lib/dates';
 import { sourceLink, sourceLabel } from '../domain/links';
@@ -22,10 +26,15 @@ interface EntryRow {
   account_code?: string | null;
 }
 
+const PAGE = 200;
+
 export default function GeneralLedger() {
   const [accountId, setAccountId] = React.useState('all');
+  const [limit, setLimit] = React.useState(PAGE);
   const { clause, params } = useDateClause('jl.date');
   const isAll = accountId === 'all';
+
+  React.useEffect(() => setLimit(PAGE), [accountId]);
 
   const { data: accounts } = useQuery<{ id: string; code: string | null; name: string; type: string }>({
     queryKey: ['gl-accounts'],
@@ -42,7 +51,7 @@ export default function GeneralLedger() {
   });
 
   const { data: entries, isLoading } = useQuery<EntryRow>({
-    queryKey: ['gl-entries', accountId, clause, ...params],
+    queryKey: ['gl-entries', accountId, clause, limit, ...params],
     query: isAll
       ? `SELECT jl.id, jl.date, je.memo, jl.amount, je.source_type, je.source_id, p.name AS party_name,
                 a.name AS account_name, a.code AS account_code
@@ -52,15 +61,15 @@ export default function GeneralLedger() {
          LEFT JOIN parties p ON p.id = jl.party_id
          WHERE a.archived = 0 AND ${clause}
          ORDER BY jl.date DESC, je.created_at DESC
-         LIMIT 500`
+         LIMIT ?`
       : `SELECT jl.id, jl.date, je.memo, jl.amount, je.source_type, je.source_id, p.name AS party_name
          FROM journal_lines jl
          JOIN journal_entries je ON je.id = jl.entry_id
          LEFT JOIN parties p ON p.id = jl.party_id
          WHERE jl.account_id = ? AND ${clause}
          ORDER BY jl.date, je.created_at
-         LIMIT 1000`,
-    parameters: isAll ? params : [accountId, ...params],
+         LIMIT ?`,
+    parameters: isAll ? [...params, String(limit)] : [accountId, ...params, String(limit)],
   });
 
   const openingBal = opening?.[0]?.bal ?? 0;
@@ -93,7 +102,18 @@ export default function GeneralLedger() {
       )}
 
       {isLoading ? (
-        <PageSpinner />
+        <ListCardSkeleton />
+      ) : !rows.length ? (
+        <EmptyState
+          icon={<BookOpenText />}
+          title={isAll ? 'No entries in this period' : 'No entries for this account in this period'}
+          message="Change the month filter above, or record a sale, purchase, or expense."
+          action={
+            <Link to="/sales/new" className={buttonVariants({ size: 'sm' })}>
+              New sale
+            </Link>
+          }
+        />
       ) : (
         <ListCard>
           {!isAll && params.length > 0 && (
@@ -106,49 +126,43 @@ export default function GeneralLedger() {
             </div>
           )}
 
-          {!rows.length ? (
-            <EmptyState
-              icon={<BookOpenText />}
-              title={isAll ? 'No entries in this period' : 'No entries for this account in this period'}
-              message="Change the month filter above to see more."
-            />
-          ) : (
-            rows.map((r) => {
-              const link = sourceLink(r.source_type, r.source_id);
-              const debit = r.amount > 0;
-              return (
-                <ListRow
-                  key={r.id}
-                  to={link ?? undefined}
-                  title={r.memo || sourceLabel(r.source_type)}
-                  subtitle={
+          {rows.map((r) => {
+            const link = sourceLink(r.source_type, r.source_id);
+            const debit = r.amount > 0;
+            return (
+              <ListRow
+                key={r.id}
+                to={link ?? undefined}
+                title={r.memo || sourceLabel(r.source_type)}
+                subtitle={
+                  <>
+                    {formatISODateShort(r.date)}
+                    {r.party_name ? ` · ${r.party_name}` : ''}
+                    {isAll && r.account_name ? ` · ${r.account_name}` : ''}
+                  </>
+                }
+                right={
+                  <SignedAmount
+                    amount={r.amount}
+                    direction={debit ? 'debit' : 'credit'}
+                    showSign={false}
+                  />
+                }
+                rightSub={
+                  isAll ? (
+                    <span className="text-[10px]">{debit ? 'Dr' : 'Cr'}</span>
+                  ) : (
                     <>
-                      {formatISODateShort(r.date)}
-                      {r.party_name ? ` · ${r.party_name}` : ''}
-                      {isAll && r.account_name ? ` · ${r.account_name}` : ''}
+                      {formatPaise(Math.abs(r.balance))}
+                      <span className="ml-0.5 text-[10px]">{r.balance >= 0 ? 'Dr' : 'Cr'}</span>
                     </>
-                  }
-                  right={
-                    <span className={debit ? 'text-foreground' : 'text-muted-foreground'}>
-                      {debit ? formatPaise(r.amount) : formatPaise(-r.amount)}
-                    </span>
-                  }
-                  rightSub={
-                    isAll ? (
-                      <span className="text-[10px]">{debit ? 'Dr' : 'Cr'}</span>
-                    ) : (
-                      <>
-                        {formatPaise(Math.abs(r.balance))}
-                        <span className="ml-0.5 text-[10px]">{r.balance >= 0 ? 'Dr' : 'Cr'}</span>
-                      </>
-                    )
-                  }
-                />
-              );
-            })
-          )}
+                  )
+                }
+              />
+            );
+          })}
 
-          {!isAll && account && rows.length > 0 && (
+          {!isAll && account && (
             <div className="flex items-center justify-between border-t bg-muted/30 px-3.5 py-2 text-xs font-semibold">
               <span className="truncate text-muted-foreground">Closing · {account.name}</span>
               <span className="shrink-0 tabular-nums">
@@ -160,6 +174,10 @@ export default function GeneralLedger() {
             </div>
           )}
         </ListCard>
+      )}
+
+      {rows.length >= limit && (
+        <LoadMoreButton onClick={() => setLimit((l) => l + PAGE)} />
       )}
     </div>
   );

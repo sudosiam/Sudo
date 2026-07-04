@@ -12,7 +12,7 @@ import { Label } from '../../components/ui/label';
 import { Select } from '../../components/ui/select';
 import { Textarea } from '../../components/ui/textarea';
 import { Dialog } from '../../components/ui/dialog';
-import { PageSpinner } from '../../components/ui/misc';
+import { EmptyState, ListCardSkeleton } from '../../components/ui/misc';
 import { createBankAccount, transferBetweenAccounts, depositToAccount, withdrawFromAccount } from '../../domain/banking';
 import { formatPaise, formatPaiseRounded, parseRupees } from '../../lib/money';
 import { todayISO } from '../../lib/dates';
@@ -220,10 +220,21 @@ export default function Banking() {
       )}
 
       {isLoading ? (
-        <PageSpinner />
+        <ListCardSkeleton />
+      ) : !visibleAccounts?.length ? (
+        <EmptyState
+          icon={<Landmark />}
+          title="No bank accounts yet"
+          message="Add a cash or bank account to track deposits, withdrawals and transfers."
+          action={
+            <Button size="sm" onClick={openAddAccountDialog}>
+              Add account
+            </Button>
+          }
+        />
       ) : (
         <ListCard>
-          {visibleAccounts?.map((a) => (
+          {visibleAccounts.map((a) => (
             <ListRow
               key={a.id}
               to={`/banking/${a.id}`}

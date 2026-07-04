@@ -4,7 +4,50 @@ import { ACC } from './accounts';
 import { postEntry, unpostSource } from './ledger';
 import { recalcSalePaid } from './sales';
 import { recalcPurchasePaid } from './purchases';
-import type { Paise } from '../lib/money';
+import { formatPaise, type Paise } from '../lib/money';
+
+type Tx = Parameters<Parameters<AbstractPowerSyncDatabase['writeTransaction']>[0]>[0];
+
+/** Guards against over-allocating a payment beyond its own amount or a document's remaining due. */
+async function assertAllocationsValid(tx: Tx, input: PaymentInput) {
+  const allocations = input.allocations.filter((a) => a.amount > 0);
+  const allocatedTotal = allocations.reduce((s, a) => s + a.amount, 0);
+  if (allocatedTotal > input.amount) {
+    throw new Error(
+      `Allocated amount (${formatPaise(allocatedTotal)}) exceeds the payment amount (${formatPaise(input.amount)}).`,
+    );
+  }
+  for (const alloc of allocations) {
+    if (alloc.saleId) {
+      const sale = await tx.getOptional<{ total: number; paid_amount: number; party_id: string }>(
+        `SELECT total, paid_amount, party_id FROM sales WHERE id = ?`,
+        [alloc.saleId],
+      );
+      if (!sale) throw new Error('Sale not found for allocation.');
+      if (sale.party_id !== input.partyId) {
+        throw new Error('Allocation targets a sale that belongs to a different party.');
+      }
+      const due = sale.total - sale.paid_amount;
+      if (alloc.amount > due) {
+        throw new Error(`Allocation of ${formatPaise(alloc.amount)} exceeds the sale's remaining due (${formatPaise(due)}).`);
+      }
+    }
+    if (alloc.purchaseId) {
+      const purchase = await tx.getOptional<{ total: number; paid_amount: number; party_id: string }>(
+        `SELECT total, paid_amount, party_id FROM purchases WHERE id = ?`,
+        [alloc.purchaseId],
+      );
+      if (!purchase) throw new Error('Purchase not found for allocation.');
+      if (purchase.party_id !== input.partyId) {
+        throw new Error('Allocation targets a purchase that belongs to a different party.');
+      }
+      const due = purchase.total - purchase.paid_amount;
+      if (alloc.amount > due) {
+        throw new Error(`Allocation of ${formatPaise(alloc.amount)} exceeds the bill's remaining due (${formatPaise(due)}).`);
+      }
+    }
+  }
+}
 
 export interface AllocationInput {
   saleId?: string;
@@ -29,6 +72,7 @@ export async function createPayment(
 ): Promise<string> {
   const paymentId = uuid();
   await db.writeTransaction(async (tx) => {
+    await assertAllocationsValid(tx, input);
     const now = new Date().toISOString();
     await tx.execute(
       `INSERT INTO payments (id, direction, party_id, date, amount, account_id, method, note, created_at)

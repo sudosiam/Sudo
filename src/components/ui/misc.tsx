@@ -18,6 +18,81 @@ export function PageSpinner() {
   );
 }
 
+/** Skeleton for a single `ListRow` — avatar + 2-line text + right-aligned amount. */
+export function ListRowSkeleton() {
+  return (
+    <div className="flex w-full items-center gap-2.5 border-b px-3.5 py-3 last:border-b-0 sm:gap-3">
+      <Skeleton className="size-9 shrink-0 rounded-full" />
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <Skeleton className="h-3.5 w-2/5 rounded" />
+        <Skeleton className="h-3 w-1/4 rounded" />
+      </div>
+      <div className="flex shrink-0 flex-col items-end gap-1.5">
+        <Skeleton className="h-3.5 w-14 rounded" />
+        <Skeleton className="h-3 w-10 rounded" />
+      </div>
+    </div>
+  );
+}
+
+/** Skeleton for a `ListCard` full of rows — the standard list-loading state. */
+export function ListCardSkeleton({ rows = 5 }: { rows?: number }) {
+  return (
+    <div className="app-surface overflow-hidden">
+      {Array.from({ length: rows }).map((_, i) => (
+        <ListRowSkeleton key={i} />
+      ))}
+    </div>
+  );
+}
+
+/** Skeleton for one KPI tile (Dashboard-style grid card). */
+export function KpiCardSkeleton() {
+  return (
+    <div className="app-surface flex h-full flex-col justify-between p-3.5">
+      <div className="flex items-center justify-between">
+        <Skeleton className="h-3 w-16 rounded" />
+        <Skeleton className="size-4 rounded" />
+      </div>
+      <Skeleton className="mt-3 h-5 w-20 rounded" />
+    </div>
+  );
+}
+
+/** Skeleton for the compact `PageKpis` pill row shown next to list-page actions. */
+export function PageKpisSkeleton({ count = 3 }: { count?: number }) {
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-1.5">
+      {Array.from({ length: count }).map((_, i) => (
+        <Skeleton key={i} className="h-[22px] w-16 rounded-md" />
+      ))}
+    </div>
+  );
+}
+
+/** Skeleton for a detail page: header card + a short list below it. */
+export function DetailSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="space-y-4">
+      <div className="app-surface space-y-3 p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-5 w-2/5 rounded" />
+            <Skeleton className="h-3 w-1/3 rounded" />
+          </div>
+          <Skeleton className="h-6 w-16 shrink-0 rounded-full" />
+        </div>
+        <div className="grid grid-cols-2 gap-3 pt-1 sm:grid-cols-3">
+          <Skeleton className="h-14 rounded-xl" />
+          <Skeleton className="h-14 rounded-xl" />
+          <Skeleton className="hidden h-14 rounded-xl sm:block" />
+        </div>
+      </div>
+      <ListCardSkeleton rows={rows} />
+    </div>
+  );
+}
+
 export function Avatar({ name, className }: { name: string; className?: string }) {
   const { bg, fg } = avatarColor(name || '?');
   return (

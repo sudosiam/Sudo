@@ -11,7 +11,8 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select } from '../components/ui/select';
 import { Dialog, ConfirmDialog } from '../components/ui/dialog';
-import { EmptyState, PageSpinner } from '../components/ui/misc';
+import { EmptyState, ListCardSkeleton } from '../components/ui/misc';
+import { LoadMoreButton } from '../components/ui/load-more';
 import { createOtherIncome, deleteOtherIncome } from '../domain/simple';
 import { formatPaise, formatPaiseRounded, parseRupees } from '../lib/money';
 import { todayISO, formatISODateShort } from '../lib/dates';
@@ -26,6 +27,8 @@ interface Row {
   account_name: string | null;
 }
 
+const PAGE = 100;
+
 export default function OtherIncome() {
   const db = usePowerSync();
   const { open: addOpen, openDialog: openAddDialog, closeDialog: closeAddDialog } = useFabDialog();
@@ -38,6 +41,7 @@ export default function OtherIncome() {
   const [accountId, setAccountId] = React.useState('');
   const [note, setNote] = React.useState('');
   const [busy, setBusy] = React.useState(false);
+  const [limit, setLimit] = React.useState(PAGE);
 
   const { data: liquidAccounts } = useQuery<{ id: string; name: string }>({
     queryKey: ['liquid-accounts'],
@@ -48,12 +52,13 @@ export default function OtherIncome() {
   }, [liquidAccounts, accountId]);
 
   const { data: rows, isLoading } = useQuery<Row>({
-    queryKey: ['other-income', clause, ...params],
+    queryKey: ['other-income', clause, limit, ...params],
     query: `SELECT oi.id, oi.source, oi.date, oi.amount, oi.note, a.name AS account_name
             FROM other_incomes oi LEFT JOIN accounts a ON a.id = oi.account_id
             WHERE ${clause}
-            ORDER BY oi.date DESC, oi.created_at DESC`,
-    parameters: params,
+            ORDER BY oi.date DESC, oi.created_at DESC
+            LIMIT ?`,
+    parameters: [...params, String(limit)],
   });
 
   const total = (rows ?? []).reduce((s, r) => s + r.amount, 0);
@@ -92,12 +97,17 @@ export default function OtherIncome() {
       />
 
       {isLoading ? (
-        <PageSpinner />
+        <ListCardSkeleton />
       ) : !rows?.length ? (
         <EmptyState
           icon={<PiggyBank />}
           title="No other income this period"
           message="Interest, commissions, scrap sales — anything not from regular sales."
+          action={
+            <Button size="sm" onClick={openAddDialog}>
+              <Plus /> New income
+            </Button>
+          }
         />
       ) : (
         <ListCard>
@@ -121,6 +131,10 @@ export default function OtherIncome() {
             </div>
           ))}
         </ListCard>
+      )}
+
+      {rows && rows.length >= limit && (
+        <LoadMoreButton onClick={() => setLimit((l) => l + PAGE)} />
       )}
 
       <Dialog open={addOpen} onClose={closeAddDialog} title="New other income" fullPage>

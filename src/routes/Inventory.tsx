@@ -7,7 +7,8 @@ import { PageKpi, PageKpis } from '../components/layout/PageKpis';
 import { ListRow, ListCard } from '../components/ListRow';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { EmptyState, PageSpinner, Segmented } from '../components/ui/misc';
+import { EmptyState, ListCardSkeleton, Segmented } from '../components/ui/misc';
+import { LoadMoreButton } from '../components/ui/load-more';
 import { ItemDialog } from '../components/forms/ItemDialog';
 import { formatPaiseRounded } from '../lib/money';
 
@@ -22,9 +23,12 @@ interface ItemRow {
   avg_cost: number;
 }
 
+const PAGE = 100;
+
 export default function Inventory() {
   const [search, setSearch] = React.useState('');
   const [category, setCategory] = React.useState('');
+  const [limit, setLimit] = React.useState(PAGE);
   const { open: dialogOpen, openDialog: openItemDialog, closeDialog: closeItemDialog, requested: newRequested } = useFabDialog();
 
   React.useEffect(() => {
@@ -41,13 +45,16 @@ export default function Inventory() {
     query: `SELECT COALESCE(SUM(ROUND(qty * avg_cost)), 0) AS stock_value, COUNT(*) AS item_count FROM items`,
   });
 
+  React.useEffect(() => setLimit(PAGE), [search, category]);
+
   const { data: items, isLoading } = useQuery<ItemRow>({
-    queryKey: ['inventory-items', search, category],
+    queryKey: ['inventory-items', search, category, limit],
     query: `SELECT i.id, i.name, i.category_id, c.name AS category_name, i.unit, i.selling_price, i.qty, i.avg_cost
             FROM items i LEFT JOIN item_categories c ON c.id = i.category_id
             WHERE i.name LIKE ? ${category ? 'AND i.category_id = ?' : ''}
-            ORDER BY i.name COLLATE NOCASE`,
-    parameters: category ? [`%${search}%`, category] : [`%${search}%`],
+            ORDER BY i.name COLLATE NOCASE
+            LIMIT ?`,
+    parameters: category ? [`%${search}%`, category, String(limit)] : [`%${search}%`, String(limit)],
   });
 
   const categoryOptions = React.useMemo(
@@ -63,12 +70,17 @@ export default function Inventory() {
       <PageHeader
         title="Inventory"
         actions={
-          totals?.[0] ? (
-            <PageKpis>
-              <PageKpi tone="muted">{totals[0].item_count} items</PageKpi>
-              <PageKpi>stock {formatPaiseRounded(totals[0].stock_value)}</PageKpi>
-            </PageKpis>
-          ) : undefined
+          <>
+            {totals?.[0] && (
+              <PageKpis>
+                <PageKpi tone="muted">{totals[0].item_count} items</PageKpi>
+                <PageKpi>stock {formatPaiseRounded(totals[0].stock_value)}</PageKpi>
+              </PageKpis>
+            )}
+            <Button size="sm" onClick={openItemDialog}>
+              <Plus className="size-4" /> New item
+            </Button>
+          </>
         }
       />
 
@@ -89,7 +101,7 @@ export default function Inventory() {
       </div>
 
       {isLoading ? (
-        <PageSpinner />
+        <ListCardSkeleton />
       ) : !items?.length ? (
         <EmptyState
           icon={<Boxes />}
@@ -123,6 +135,10 @@ export default function Inventory() {
             />
           ))}
         </ListCard>
+      )}
+
+      {items && items.length >= limit && (
+        <LoadMoreButton onClick={() => setLimit((l) => l + PAGE)} />
       )}
 
       <ItemDialog open={dialogOpen} onClose={closeItemDialog} />

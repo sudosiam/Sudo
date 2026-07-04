@@ -1,6 +1,9 @@
 import type { AbstractPowerSyncDatabase } from '@powersync/web';
 import { ensureSeeded } from './seed';
 import { APP_VERSION } from '../lib/version';
+import { clearUploadQueue } from '../lib/syncQueue';
+import { wipeCloudUserData } from '../lib/cloudReset';
+import { clearDiscardedUploads } from '../lib/syncFailures';
 
 export const BACKUP_VERSION = 1;
 
@@ -174,6 +177,8 @@ export async function importBackup(db: AbstractPowerSyncDatabase, raw: unknown) 
   const tables = parseBackupTables(raw);
 
   await clearAllTables(db);
+  // Bulk DELETE FROM triggers one upload op per row — discard; PUTs below are what matter.
+  await clearUploadQueue(db);
 
   await db.writeTransaction(async (tx) => {
     for (const t of INSERT_ORDER) {
@@ -187,8 +192,23 @@ export async function importBackup(db: AbstractPowerSyncDatabase, raw: unknown) 
   await ensureSeeded(db);
 }
 
-/** Wipe all business data and restore the default chart of accounts. */
-export async function factoryReset(db: AbstractPowerSyncDatabase) {
-  await clearAllTables(db);
+export type FactoryResetOptions = {
+  /** Wipe Supabase rows for the signed-in user (default true). */
+  wipeCloud?: boolean;
+};
+
+/** Wipe all business data locally and in the cloud, then restore default accounts. */
+export async function factoryReset(
+  db: AbstractPowerSyncDatabase,
+  options?: FactoryResetOptions,
+) {
+  const wipeCloud = options?.wipeCloud ?? true;
+  if (wipeCloud) {
+    await wipeCloudUserData();
+  }
+
+  // Clears local tables + upload queue in one step (no per-row DELETE uploads).
+  await db.disconnectAndClear();
   await ensureSeeded(db);
+  clearDiscardedUploads();
 }

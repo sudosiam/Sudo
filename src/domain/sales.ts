@@ -3,7 +3,7 @@ import { uuid } from '../lib/utils';
 import { mulQty } from '../lib/money';
 import { ACC } from './accounts';
 import { postEntry, unpostSource } from './ledger';
-import { nextDocNumber } from './docnum';
+import { nextDocNumber, assertDocNumberAvailable } from './docnum';
 import { applySaleToItem, restoreSaleToItem, assertSaleStock } from './inventory';
 import { getSetting } from './settings';
 import { payStatus, type SaleInput } from './types';
@@ -27,7 +27,7 @@ export async function recalcSalePaid(tx: Tx, saleId: string) {
     [saleId],
   );
   await tx.execute(`UPDATE sales SET paid_amount = ?, status = ? WHERE id = ?`, [
-    row.paid,
+    Math.min(row.paid, sale.total),
     payStatus(sale.total, row.paid),
     saleId,
   ]);
@@ -119,6 +119,7 @@ export async function createSale(db: AbstractPowerSyncDatabase, input: SaleInput
     const { subtotal, total } = computeTotals(input);
     const { seq, docNo: autoNo } = await nextDocNumber(tx, 'sales', prefix || 'INV');
     const docNo = input.docNo?.trim() || autoNo;
+    if (input.docNo?.trim()) await assertDocNumberAvailable(tx, 'sales', docNo);
     const now = new Date().toISOString();
     await tx.execute(
       `INSERT INTO sales (id, invoice_no, seq, party_id, date, status, subtotal, discount_amount,

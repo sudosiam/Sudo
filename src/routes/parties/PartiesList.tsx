@@ -7,7 +7,8 @@ import { PageKpi, PageKpis } from '../../components/layout/PageKpis';
 import { ListRow, ListCard } from '../../components/ListRow';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { EmptyState, PageSpinner, Segmented } from '../../components/ui/misc';
+import { EmptyState, ListCardSkeleton, Segmented } from '../../components/ui/misc';
+import { LoadMoreButton } from '../../components/ui/load-more';
 import { PartyDialog } from '../../components/forms/PartyDialog';
 import { formatPaise } from '../../lib/money';
 import { ACC } from '../../domain/accounts';
@@ -22,16 +23,21 @@ interface Row {
   due: number; // +ve = they owe us (AR), -ve = we owe them
 }
 
+const PAGE = 100;
+
 export default function PartiesList() {
   const [filter, setFilter] = React.useState<Filter>('all');
   const [search, setSearch] = React.useState('');
+  const [limit, setLimit] = React.useState(PAGE);
   const { open: dialogOpen, openDialog: openPartyDialog, closeDialog: closePartyDialog } = useFabDialog();
 
   const typeClause =
     filter === 'all' ? '1=1' : filter === 'customer' ? "p.type IN ('customer','both')" : "p.type IN ('vendor','both')";
 
+  React.useEffect(() => setLimit(PAGE), [filter, search]);
+
   const { data: rows, isLoading } = useQuery<Row>({
-    queryKey: ['parties-list', filter, search],
+    queryKey: ['parties-list', filter, search, limit],
     query: `
       SELECT p.id, p.name, p.type, p.phone,
              COALESCE((SELECT SUM(CASE WHEN jl.account_id = '${ACC.AR}' THEN jl.amount
@@ -39,8 +45,9 @@ export default function PartiesList() {
                        FROM journal_lines jl WHERE jl.party_id = p.id), 0) AS due
       FROM parties p
       WHERE ${typeClause} AND (p.name LIKE ? OR COALESCE(p.phone,'') LIKE ?)
-      ORDER BY p.name COLLATE NOCASE`,
-    parameters: [`%${search}%`, `%${search}%`],
+      ORDER BY p.name COLLATE NOCASE
+      LIMIT ?`,
+    parameters: [`%${search}%`, `%${search}%`, String(limit)],
   });
 
   return (
@@ -84,7 +91,7 @@ export default function PartiesList() {
       </div>
 
       {isLoading ? (
-        <PageSpinner />
+        <ListCardSkeleton />
       ) : !rows?.length ? (
         <EmptyState
           icon={<Users />}
@@ -121,6 +128,10 @@ export default function PartiesList() {
             />
           ))}
         </ListCard>
+      )}
+
+      {rows && rows.length >= limit && (
+        <LoadMoreButton onClick={() => setLimit((l) => l + PAGE)} />
       )}
 
       <PartyDialog open={dialogOpen} onClose={closePartyDialog} />

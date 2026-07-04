@@ -11,7 +11,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select } from '../components/ui/select';
 import { Dialog, ConfirmDialog } from '../components/ui/dialog';
-import { EmptyState, PageSpinner } from '../components/ui/misc';
+import { EmptyState, ListCardSkeleton } from '../components/ui/misc';
 import { createFixedAsset, updateFixedAsset, deleteFixedAsset } from '../domain/simple';
 import { formatPaise, formatPaiseRounded, parseRupees } from '../lib/money';
 import { todayISO, formatISODate } from '../lib/dates';
@@ -114,12 +114,17 @@ export default function FixedAssets() {
       />
 
       {isLoading ? (
-        <PageSpinner />
+        <ListCardSkeleton />
       ) : !rows?.length ? (
         <EmptyState
           icon={<Building2 />}
           title="No fixed assets yet"
           message="Machinery, vehicles, furniture — long-term assets of the business."
+          action={
+            <Button size="sm" onClick={openAddDialog}>
+              <Plus /> New asset
+            </Button>
+          }
         />
       ) : (
         <ListCard>

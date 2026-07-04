@@ -6,7 +6,8 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { PageKpi, PageKpis } from '../../components/layout/PageKpis';
 import { ListRow, ListCard } from '../../components/ListRow';
 import { Button } from '../../components/ui/button';
-import { EmptyState, PageSpinner, Segmented } from '../../components/ui/misc';
+import { EmptyState, ListCardSkeleton, Segmented } from '../../components/ui/misc';
+import { LoadMoreButton } from '../../components/ui/load-more';
 import { PaymentDialog } from '../../components/forms/PaymentDialog';
 import { formatPaise, formatPaiseRounded } from '../../lib/money';
 import { formatISODateShort } from '../../lib/dates';
@@ -23,8 +24,11 @@ interface Row {
   account_name: string | null;
 }
 
+const PAGE = 100;
+
 export default function Payments() {
   const [filter, setFilter] = React.useState<Filter>('all');
+  const [limit, setLimit] = React.useState(PAGE);
   const { open: dialogOpen, openDialog: openPaymentDialog, closeDialog: closePaymentDialog } = useFabDialog();
   const { clause, params } = useDateClause('pm.date');
 
@@ -39,7 +43,7 @@ export default function Payments() {
   });
 
   const { data: rows, isLoading } = useQuery<Row>({
-    queryKey: ['payments-list', clause, filter, ...params],
+    queryKey: ['payments-list', clause, filter, limit, ...params],
     query: `SELECT pm.id, pm.direction, pm.date, pm.amount, pm.method,
                    p.name AS party_name, a.name AS account_name
             FROM payments pm
@@ -47,9 +51,11 @@ export default function Payments() {
             LEFT JOIN accounts a ON a.id = pm.account_id
             WHERE ${clause} AND ${dirClause}
             ORDER BY pm.date DESC, pm.created_at DESC
-            LIMIT 300`,
-    parameters: params,
+            LIMIT ?`,
+    parameters: [...params, String(limit)],
   });
+
+  React.useEffect(() => setLimit(PAGE), [filter]);
 
   const s = summary?.[0];
 
@@ -87,12 +93,17 @@ export default function Payments() {
       </div>
 
       {isLoading ? (
-        <PageSpinner />
+        <ListCardSkeleton />
       ) : !rows?.length ? (
         <EmptyState
           icon={<ArrowLeftRight />}
           title="No payments here"
           message="Payments recorded with sales/purchases and standalone ones all appear here."
+          action={
+            <Button size="sm" onClick={openPaymentDialog}>
+              <Plus /> New payment
+            </Button>
+          }
         />
       ) : (
         <ListCard>
@@ -119,6 +130,10 @@ export default function Payments() {
             />
           ))}
         </ListCard>
+      )}
+
+      {rows && rows.length >= limit && (
+        <LoadMoreButton onClick={() => setLimit((l) => l + PAGE)} />
       )}
 
       <PaymentDialog open={dialogOpen} onClose={closePaymentDialog} />

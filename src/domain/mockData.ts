@@ -7,7 +7,6 @@ import { postEntry } from './ledger';
 import { applyPurchaseToItem, applySaleToItem } from './inventory';
 import { payStatus } from './types';
 import { factoryReset } from './backup';
-import { ensureSeeded } from './seed';
 
 type Tx = Parameters<Parameters<AbstractPowerSyncDatabase['writeTransaction']>[0]>[0];
 
@@ -410,7 +409,6 @@ export async function generateMockData(
   if (opts?.resetFirst) {
     emitProgress(onProgress, 'Resetting…', 0, 1);
     await factoryReset(db);
-    await ensureSeeded(db);
     emitProgress(onProgress, 'Resetting…', 1, 1);
   }
 

@@ -3,7 +3,7 @@ import { uuid } from '../lib/utils';
 import { mulQty } from '../lib/money';
 import { ACC } from './accounts';
 import { postEntry, unpostSource } from './ledger';
-import { nextDocNumber } from './docnum';
+import { nextDocNumber, assertDocNumberAvailable } from './docnum';
 import { applyPurchaseToItem, recomputeItemState } from './inventory';
 import { getSetting } from './settings';
 import { payStatus, type PurchaseInput } from './types';
@@ -27,7 +27,7 @@ export async function recalcPurchasePaid(tx: Tx, purchaseId: string) {
     [purchaseId],
   );
   await tx.execute(`UPDATE purchases SET paid_amount = ?, status = ? WHERE id = ?`, [
-    row.paid,
+    Math.min(row.paid, purchase.total),
     payStatus(purchase.total, row.paid),
     purchaseId,
   ]);
@@ -105,6 +105,7 @@ export async function createPurchase(
     const { subtotal, total } = computeTotals(input);
     const { seq, docNo: autoNo } = await nextDocNumber(tx, 'purchases', prefix || 'PUR');
     const docNo = input.docNo?.trim() || autoNo;
+    if (input.docNo?.trim()) await assertDocNumberAvailable(tx, 'purchases', docNo);
     const now = new Date().toISOString();
     await tx.execute(
       `INSERT INTO purchases (id, bill_no, seq, party_id, date, status, subtotal, discount_amount,

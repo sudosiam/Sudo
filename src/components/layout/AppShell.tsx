@@ -14,6 +14,8 @@ import { haptic } from '../../lib/haptics';
 import { cloudConfigured } from '../../system/supabase';
 import { formatSyncSchemaError } from '../../lib/syncErrors';
 import { useUploadQueue } from '../../hooks/useUploadQueue';
+import { useSyncFailures } from '../../hooks/useSyncFailures';
+import { ToastHost } from '../ui/toast';
 
 function ThemeToggle() {
   const { theme, setTheme } = useTheme();
@@ -36,11 +38,13 @@ function ThemeToggle() {
 function SyncIndicator() {
   const db = usePowerSync();
   const status = useStatus();
+  const navigate = useNavigate();
   const { stats } = useUploadQueue(db, {
     enabled: cloudConfigured && status.connected,
     pollMs: 2000,
     previewLimit: 0,
   });
+  const { items: failures } = useSyncFailures();
 
   const online = status.connected;
   const uploadError = status.dataFlowStatus.uploadError;
@@ -48,6 +52,7 @@ function SyncIndicator() {
   const syncError = uploadError ?? downloadError;
   const active = status.dataFlowStatus.downloading || status.dataFlowStatus.uploading;
   const pending = stats.count;
+  const hasFailures = failures.length > 0;
 
   if (!cloudConfigured) return null;
 
@@ -56,24 +61,33 @@ function SyncIndicator() {
 
   let label = 'Offline';
   if (online) {
-    if (syncError) label = 'Sync error';
+    if (hasFailures) label = `${failures.length} not synced`;
+    else if (syncError) label = 'Sync error';
     else if (syncing) label = pending > 0 ? `Syncing (${pending})` : 'Syncing';
     else label = 'Synced';
   }
 
+  const isError = !!syncError || hasFailures;
+
   return (
-    <div
+    <button
+      type="button"
+      onClick={() => navigate('/settings')}
       className={cn(
-        'flex max-w-[11rem] items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-medium',
-        syncError
-          ? 'border-destructive/30 bg-destructive/10 text-destructive'
+        'flex max-w-[11rem] items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-medium transition-[background-color] duration-150 ease-out',
+        isError
+          ? 'border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15'
           : online
-            ? 'border-success/30 bg-success/10 text-success'
-            : 'border-border bg-card/65 text-muted-foreground',
+            ? 'border-success/30 bg-success/10 text-success hover:bg-success/15'
+            : 'border-border bg-card/65 text-muted-foreground hover:bg-accent/60',
       )}
-      title={errorText ?? (online ? 'Cloud sync status' : 'Offline — changes saved locally')}
+      title={
+        hasFailures
+          ? `${failures.length} change${failures.length === 1 ? '' : 's'} could not be synced to the cloud — tap for details.`
+          : (errorText ?? (online ? 'Cloud sync status' : 'Offline — changes saved locally'))
+      }
     >
-      {syncError ? (
+      {isError ? (
         <AlertCircle className="size-3.5 shrink-0" />
       ) : syncing ? (
         <RefreshCw className="size-3.5 shrink-0 animate-spin" />
@@ -83,7 +97,7 @@ function SyncIndicator() {
         <WifiOff className="size-3.5 shrink-0" />
       )}
       <span className="hidden truncate sm:inline">{label}</span>
-    </div>
+    </button>
   );
 }
 
@@ -243,6 +257,7 @@ export function AppShell() {
             <PageTransition />
           </main>
           <CreateShortcutsFab />
+          <ToastHost />
         </div>
       </PageTitleProvider>
     </div>

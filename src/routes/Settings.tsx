@@ -12,10 +12,10 @@ import {
   Cloud,
   FolderOpen,
   Trash2,
-  AlertTriangle,
   FlaskConical,
   ListOrdered,
   RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/button';
@@ -45,6 +45,7 @@ import { cn } from '../lib/utils';
 import { formatSyncSchemaError } from '../lib/syncErrors';
 import { clearUploadQueue, formatQueueSize } from '../lib/syncQueue';
 import { useUploadQueue } from '../hooks/useUploadQueue';
+import { useSyncFailures } from '../hooks/useSyncFailures';
 import { APP_VERSION } from '../lib/version';
 import {
   generateMockData,
@@ -197,9 +198,9 @@ function StatusBanner({ type, text }: { type: 'ok' | 'err'; text: string }) {
 }
 
 const BUSINESS_FIELDS = [
-  { key: 'business_name' as const, label: 'Business name', hint: 'Shown on PDF statements' },
-  { key: 'invoice_prefix' as const, label: 'Invoice prefix', hint: 'e.g. INV-001' },
-  { key: 'purchase_prefix' as const, label: 'Bill prefix', hint: 'e.g. PUR-001' },
+  { key: 'business_name' as const, label: 'Business name' },
+  { key: 'invoice_prefix' as const, label: 'Invoice prefix' },
+  { key: 'purchase_prefix' as const, label: 'Bill prefix' },
 ];
 
 export default function Settings() {
@@ -225,9 +226,11 @@ export default function Settings() {
   const [mockResetFirst, setMockResetFirst] = React.useState(true);
   const [mockProgress, setMockProgress] = React.useState<MockDataProgress | null>(null);
   const [clearQueueOpen, setClearQueueOpen] = React.useState(false);
+  const [signOutOpen, setSignOutOpen] = React.useState(false);
   const { stats: queueStats, items: queueItems, refresh: refreshQueue } = useUploadQueue(db, {
     enabled: cloudConfigured,
   });
+  const { items: syncFailures, clear: clearSyncFailures } = useSyncFailures();
 
   React.useEffect(() => {
     (async () => {
@@ -407,6 +410,19 @@ export default function Settings() {
     }
   };
 
+  const confirmSignOut = async () => {
+    setBusy('sign-out');
+    try {
+      await signOut();
+      setSignOutOpen(false);
+      window.location.reload();
+    } catch (e) {
+      flashDataMessage('err', e instanceof Error ? e.message : 'Sign out failed.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const confirmFactoryReset = async () => {
     setBusy('reset');
     try {
@@ -434,10 +450,10 @@ export default function Settings() {
   const folderSupported = isFolderBackupSupported();
 
   const autoBackupDetail = !folderSupported
-    ? 'Not available in this browser'
+    ? undefined
     : autoBackupOn && folderName
       ? folderName
-      : 'Save a JSON backup to a folder once per day';
+      : undefined;
 
   return (
     <div className="mx-auto max-w-2xl space-y-5 pb-4">
@@ -445,14 +461,11 @@ export default function Settings() {
 
       <SettingGroup title="Business">
         <div className="divide-y">
-          {BUSINESS_FIELDS.map(({ key, label, hint }) => (
+          {BUSINESS_FIELDS.map(({ key, label }) => (
             <div key={key} className="space-y-2 px-3.5 py-3">
-              <div className="flex items-baseline justify-between gap-2">
-                <Label htmlFor={key} className="text-sm font-medium">
-                  {label}
-                </Label>
-                <span className="text-[11px] text-muted-foreground">{hint}</span>
-              </div>
+              <Label htmlFor={key} className="text-sm font-medium">
+                {label}
+              </Label>
               <div className="flex gap-2">
                 <Input
                   id={key}
@@ -504,13 +517,7 @@ export default function Settings() {
         {!cloudConfigured ? (
           <div className="flex items-start gap-3 px-3.5 py-3.5 text-sm">
             <CloudOff className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-            <div>
-              <p className="font-medium">Offline only</p>
-              <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                Data stays on this device. See <code className="text-[11px]">SETUP.md</code> to connect
-                Supabase + PowerSync.
-              </p>
-            </div>
+            <p className="font-medium">Offline only</p>
           </div>
         ) : (
           <>
@@ -588,7 +595,39 @@ export default function Settings() {
               )}
             </div>
 
-            <ActionRow icon={LogOut} label="Sign out" onClick={() => void signOut()} />
+            {syncFailures.length > 0 && (
+              <div className="border-b border-destructive/20 bg-destructive/5 px-3.5 py-3 text-sm">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-destructive">
+                      {syncFailures.length} change{syncFailures.length === 1 ? '' : 's'} could not
+                      be synced
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      The cloud rejected these permanently (schema mismatch, permission, or
+                      invalid data). Local data still has them — fix the underlying issue and
+                      re-enter the change.
+                    </p>
+                    <ul className="mt-2 max-h-36 space-y-1 overflow-y-auto rounded-lg border bg-muted/30 px-2.5 py-2 font-mono text-[10px] text-muted-foreground">
+                      {syncFailures.slice(-10).reverse().map((f, i) => (
+                        <li key={`${f.table}-${f.id}-${i}`} className="whitespace-pre-wrap">
+                          <span className="text-foreground/80">{f.op}</span> {f.table}{' '}
+                          <span className="opacity-70">{formatSyncSchemaError(f.message)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => clearSyncFailures()}>
+                    Dismiss
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <ActionRow icon={LogOut} label="Sign out" onClick={() => setSignOutOpen(true)} />
           </>
         )}
       </SettingGroup>
@@ -599,7 +638,6 @@ export default function Settings() {
         <ActionRow
           icon={Download}
           label="Export backup"
-          detail="Download all data as JSON"
           onClick={() => void handleExport()}
           disabled={busy === 'export'}
           trailing={
@@ -615,7 +653,6 @@ export default function Settings() {
         <ActionRow
           icon={Upload}
           label="Import backup"
-          detail="Replace all local data from a file"
           onClick={() => importRef.current?.click()}
           disabled={busy === 'import'}
         />
@@ -660,7 +697,6 @@ export default function Settings() {
           <ActionRow
             icon={FlaskConical}
             label="Generate mock data"
-            detail="Parties, inventory, sales, purchases, expenses & payments"
             onClick={() => setMockOpen(true)}
             disabled={busy === 'mock'}
           />
@@ -671,7 +707,6 @@ export default function Settings() {
         <ActionRow
           icon={Trash2}
           label="Factory reset"
-          detail="Downloads a backup, then wipes all data"
           onClick={() => {
             setResetPhrase('');
             setResetOpen(true);
@@ -715,7 +750,6 @@ export default function Settings() {
             }
           }}
           title="Generate mock data"
-          description="Creates realistic transactions for UI and performance testing."
         >
           <div className="space-y-3">
             <div className="space-y-1.5">
@@ -760,9 +794,6 @@ export default function Settings() {
               />
               <span>
                 <span className="font-medium">Clear existing data first</span>
-                <span className="mt-0.5 block text-xs text-muted-foreground">
-                  Factory reset, then seed accounts before generating mock records.
-                </span>
               </span>
             </label>
 
@@ -790,15 +821,11 @@ export default function Settings() {
           if (busy !== 'clear-queue') setClearQueueOpen(false);
         }}
         title="Clear upload queue"
-        description="Discard pending cloud uploads on this device."
       >
-        <div className="flex items-start gap-2 rounded-xl border border-destructive/25 bg-destructive/5 p-3 text-sm">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
-          <p className="text-muted-foreground">
-            {queueStats.count} change{queueStats.count === 1 ? '' : 's'} will not be uploaded to the cloud.
-            Your local data stays as-is; other devices will not receive these changes.
-          </p>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          Pending local changes will be discarded and will not be uploaded to the cloud. This
+          cannot be undone — data that only exists locally will be permanently lost from sync.
+        </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" disabled={busy === 'clear-queue'} onClick={() => setClearQueueOpen(false)}>
             Cancel
@@ -810,24 +837,42 @@ export default function Settings() {
       </Dialog>
 
       <Dialog
+        open={signOutOpen}
+        onClose={() => {
+          if (busy !== 'sign-out') setSignOutOpen(false);
+        }}
+        title="Sign out"
+      >
+        <p className="text-sm text-muted-foreground">
+          Local data on this device will be cleared for privacy on shared devices. Anything
+          already synced stays safe in the cloud and will download again next time you sign in.
+        </p>
+        {queueStats.count > 0 && (
+          <p className="mt-2 text-sm font-medium text-destructive">
+            {queueStats.count} change{queueStats.count === 1 ? '' : 's'} haven't finished uploading
+            yet — they will be lost if you sign out now.
+          </p>
+        )}
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" disabled={busy === 'sign-out'} onClick={() => setSignOutOpen(false)}>
+            Cancel
+          </Button>
+          <Button variant="destructive" disabled={busy === 'sign-out'} onClick={() => void confirmSignOut()}>
+            {busy === 'sign-out' ? 'Signing out…' : 'Sign out'}
+          </Button>
+        </div>
+      </Dialog>
+
+      <Dialog
         open={resetOpen}
         onClose={() => {
           setResetOpen(false);
           setResetPhrase('');
         }}
         title="Factory reset"
-        description="A backup downloads first, then everything is deleted."
       >
-        <div className="flex items-start gap-2 rounded-xl border border-destructive/25 bg-destructive/5 p-3 text-sm">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
-          <p className="text-muted-foreground">
-            Type{' '}
-            <span className="font-mono text-xs font-semibold text-foreground">{FACTORY_RESET_PHRASE}</span>{' '}
-            to confirm.
-          </p>
-        </div>
         <div className="mt-3 space-y-1.5">
-          <Label htmlFor="reset-phrase">Confirmation</Label>
+          <Label htmlFor="reset-phrase">Type {FACTORY_RESET_PHRASE} to confirm</Label>
           <Input
             id="reset-phrase"
             value={resetPhrase}

@@ -8,7 +8,7 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { PageKpi, PageKpis } from '../components/layout/PageKpis';
 import { ListRow, ListCard } from '../components/ListRow';
 import { Button } from '../components/ui/button';
-import { EmptyState, PageSpinner } from '../components/ui/misc';
+import { EmptyState, ListCardSkeleton } from '../components/ui/misc';
 import { ExpenseDialog } from '../components/forms/ExpenseDialog';
 import {
   RecurringExpenseDialog,
@@ -134,13 +134,18 @@ export default function Expenses() {
       <PageHeader
         title="Expenses"
         actions={
-          <PageKpis>
-            {dueRecurring.length > 0 && (
-              <PageKpi tone="destructive">{dueRecurring.length} due</PageKpi>
-            )}
-            <PageKpi tone="muted">{rows?.length ?? 0} expenses</PageKpi>
-            <PageKpi tone="destructive">{formatPaiseRounded(total)}</PageKpi>
-          </PageKpis>
+          <>
+            <PageKpis>
+              {dueRecurring.length > 0 && (
+                <PageKpi tone="destructive">{dueRecurring.length} due</PageKpi>
+              )}
+              <PageKpi tone="muted">{rows?.length ?? 0} expenses</PageKpi>
+              <PageKpi tone="destructive">{formatPaiseRounded(total)}</PageKpi>
+            </PageKpis>
+            <Button size="sm" onClick={openAddDialog}>
+              <Plus className="size-4" /> New expense
+            </Button>
+          </>
         }
       />
 
@@ -232,7 +237,7 @@ export default function Expenses() {
         </section>
 
       {isLoading ? (
-        <PageSpinner />
+        <ListCardSkeleton />
       ) : showEmpty ? (
         <EmptyState
           icon={<ReceiptText />}
